@@ -1,7 +1,6 @@
 Module dyn_comp
 
   use shr_kind_mod, only: r8 => shr_kind_r8
-  use domain_mod, only : domain1d_t
   use element_mod, only : element_t, elem_state_t
   use time_mod, only : TimeLevel_t, se_nsplit=>nsplit
   use hybvcoord_mod, only : hvcoord_t
@@ -242,7 +241,7 @@ CONTAINS
 
   subroutine dyn_init2(dyn_in)
     use dimensions_mod,   only: nlev, nelemd
-    use prim_driver_mod,  only: prim_init2, prim_run
+    use prim_driver_mod,  only: prim_init2
     use prim_si_ref_mod,  only: prim_set_mass
     use hybrid_mod,       only: config_thread_region, get_loop_ranges, init_loop_ranges
     use hycoef,           only: hyam, hybm, hyai, hybi, ps0
@@ -364,7 +363,7 @@ CONTAINS
 
     ! !USES:
     use parallel_mod,     only : par
-    use prim_driver_mod,  only: prim_run, prim_run_subcycle
+    use prim_driver_mod,  only: prim_run_subcycle
     use dimensions_mod,   only : nlev, nelemd
     use thread_mod,       only: horz_num_threads
     use time_mod,         only: tstep

@@ -1,10 +1,7 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module element_mod
 
-  use kinds,                  only: real_kind, long_kind, int_kind
+  use shr_kind_mod,           only: r8=>shr_kind_r8
+  use kinds,                  only: long_kind, int_kind
   use coordinate_systems_mod, only: spherical_polar_t, cartesian2D_t, cartesian3D_t, distance
   use dimensions_mod,         only: np, npsq, nlev, nlevp, qsize_d, max_neigh_edges
   use edgetype_mod,               only: edgedescriptor_t, rotation_t
@@ -13,8 +10,6 @@ module element_mod
   implicit none
   private
   integer, public, parameter :: timelevels = 3
-
-#ifdef _PRIM
 
 ! =========== PRIMITIVE-EQUATION DATA-STRUCTURES =====================
 
@@ -26,14 +21,14 @@ module element_mod
     ! vertically-lagrangian code advects dp3d instead of ps_v
     ! tracers Q, Qdp always use 2 level time scheme
 
-    real (kind=real_kind) :: v   (np,np,2,nlev,timelevels)            ! velocity                           1
-    real (kind=real_kind) :: T   (np,np,nlev,timelevels)              ! temperature                        2
-    real (kind=real_kind) :: dp3d(np,np,nlev,timelevels)              ! delta p on levels                  8
-    real (kind=real_kind) :: lnps(np,np,timelevels)                   ! log surface pressure               3
-    real (kind=real_kind) :: ps_v(np,np,timelevels)                   ! surface pressure                   4
-    real (kind=real_kind) :: phis(np,np)                              ! surface geopotential (prescribed)  5
-    real (kind=real_kind) :: Q   (np,np,nlev,qsize_d)                 ! Tracer concentration               6
-    real (kind=real_kind) :: Qdp (np,np,nlev,qsize_d,2)               ! Tracer mass                        7
+    real (kind=r8) :: v     (np,np,2,nlev,timelevels)            ! velocity                           1
+    real (kind=r8) :: T     (np,np,nlev,timelevels)              ! temperature                        2
+    real (kind=r8) :: dp3d  (np,np,nlev,timelevels)              ! delta p on levels                  8
+    real (kind=r8) :: lnps  (np,np,timelevels)                   ! log surface pressure               3
+    real (kind=r8) :: ps_v  (np,np,timelevels)                   ! surface pressure                   4
+    real (kind=r8) :: phis  (np,np)                              ! surface geopotential (prescribed)  5
+    real (kind=r8) :: Q     (np,np,nlev,qsize_d)                 ! Tracer concentration               6
+    real (kind=r8) :: Qdp   (np,np,nlev,qsize_d,2)               ! Tracer mass                        7
   end type elem_state_t
 
   integer(kind=int_kind),public,parameter::StateComponents=8! num prognistics variables (for prim_restart_mod.F90)
@@ -46,44 +41,44 @@ module element_mod
     ! storage for subcycling tracers/dynamics
     ! if (compute_mean_flux==1) vn0=time_avg(U*dp) else vn0=U at tracer-time t
 
-    real (kind=real_kind) :: vn0  (np,np,2,nlev)                      ! velocity for SE tracer advection
-    real (kind=real_kind) :: vstar(np,np,2,nlev)                      ! velocity on Lagrangian surfaces
-    real (kind=real_kind) :: dpdiss_biharmonic(np,np,nlev)            ! mean dp dissipation tendency, if nu_p>0
-    real (kind=real_kind) :: dpdiss_ave(np,np,nlev)                   ! mean dp used to compute psdiss_tens
+    real (kind=r8) :: vn0  (np,np,2,nlev)                      ! velocity for SE tracer advection
+    real (kind=r8) :: vstar(np,np,2,nlev)                      ! velocity on Lagrangian surfaces
+    real (kind=r8) :: dpdiss_biharmonic(np,np,nlev)            ! mean dp dissipation tendency, if nu_p>0
+    real (kind=r8) :: dpdiss_ave(np,np,nlev)                   ! mean dp used to compute psdiss_tens
 
     ! diagnostics for explicit timestep
-    real (kind=real_kind) :: phi(np,np,nlev)                          ! geopotential
-    real (kind=real_kind) :: omega_p(np,np,nlev)                      ! vertical tendency (derived)
-    real (kind=real_kind) :: eta_dot_dpdn(np,np,nlevp)                ! mean vertical flux from dynamics
+    real (kind=r8) :: phi(np,np,nlev)                          ! geopotential
+    real (kind=r8) :: omega_p(np,np,nlev)                      ! vertical tendency (derived)
+    real (kind=r8) :: eta_dot_dpdn(np,np,nlevp)                ! mean vertical flux from dynamics
 
     ! semi-implicit diagnostics: computed in explict-component, reused in Helmholtz-component.
-    real (kind=real_kind) :: grad_lnps(np,np,2)                       ! gradient of log surface pressure
-    real (kind=real_kind) :: zeta(np,np,nlev)                         ! relative vorticity
-    real (kind=real_kind) :: div(np,np,nlev,timelevels)               ! divergence
+    real (kind=r8) :: grad_lnps(np,np,2)                       ! gradient of log surface pressure
+    real (kind=r8) :: zeta(np,np,nlev)                         ! relative vorticity
+    real (kind=r8) :: div(np,np,nlev,timelevels)               ! divergence
 
     ! tracer advection fields used for consistency and limiters
-    real (kind=real_kind) :: dp(np,np,nlev)                           ! for dp_tracers at physics timestep
-    real (kind=real_kind) :: divdp(np,np,nlev)                        ! divergence of dp
-    real (kind=real_kind) :: divdp_proj(np,np,nlev)                   ! DSSed divdp
+    real (kind=r8) :: dp(np,np,nlev)                           ! for dp_tracers at physics timestep
+    real (kind=r8) :: divdp(np,np,nlev)                        ! divergence of dp
+    real (kind=r8) :: divdp_proj(np,np,nlev)                   ! DSSed divdp
 
 #ifdef CAM
     ! forcing terms for CAM
-    real (kind=real_kind) :: FQ(np,np,nlev,qsize_d, 1)                ! tracer forcing
-    real (kind=real_kind) :: FM(np,np,2,nlev, 1)                      ! momentum forcing
-    real (kind=real_kind) :: FT(np,np,nlev, 1)                        ! temperature forcing
-    real (kind=real_kind) :: omega_prescribed(np,np,nlev)             ! prescribed vertical tendency
+    real (kind=r8) :: FQ(np,np,nlev,qsize_d, 1)                ! tracer forcing
+    real (kind=r8) :: FM(np,np,2,nlev, 1)                      ! momentum forcing
+    real (kind=r8) :: FT(np,np,nlev, 1)                        ! temperature forcing
+    real (kind=r8) :: omega_prescribed(np,np,nlev)             ! prescribed vertical tendency
 #else
     ! forcing terms for HOMME
-    real (kind=real_kind) :: FQ(np,np,nlev,qsize_d, timelevels)       ! tracer forcing
-    real (kind=real_kind) :: FM(np,np,2,nlev, timelevels)             ! momentum forcing
-    real (kind=real_kind) :: FT(np,np,nlev, timelevels)               ! temperature forcing
+    real (kind=r8) :: FQ(np,np,nlev,qsize_d, timelevels)       ! tracer forcing
+    real (kind=r8) :: FM(np,np,2,nlev, timelevels)             ! momentum forcing
+    real (kind=r8) :: FT(np,np,nlev, timelevels)               ! temperature forcing
 #endif
 
     ! forcing terms for both CAM and HOMME
     ! FQps for conserving dry mass in the presence of precipitation
 
-    real (kind=real_kind) :: pecnd(np,np,nlev)                        ! pressure perturbation from condensate
-    real (kind=real_kind) :: FQps(np,np,timelevels)                   ! forcing of FQ on ps_v
+    real (kind=r8) :: pecnd(np,np,nlev)                        ! pressure perturbation from condensate
+    real (kind=r8) :: FQps(np,np,timelevels)                   ! forcing of FQ on ps_v
 
   end type derived_state_t
 
@@ -112,31 +107,31 @@ module element_mod
     ! S1   = < Cp_star dp/dn , RT omega_p/Cp_star >
     ! S2   = -< div (u dp/dn), phis >
 
-    real (kind=real_kind) :: KEvert1(np,np)                           ! term from continuity equ
-    real (kind=real_kind) :: KEvert2(np,np)                           ! term from momentum equ
-    real (kind=real_kind) :: IEvert1(np,np)                           ! term from continuity equ
-    real (kind=real_kind) :: IEvert2(np,np)                           ! term from T equ
-    real (kind=real_kind) :: IEvert1_wet(np,np)                       ! wet term from continuity equ
-    real (kind=real_kind) :: IEvert2_wet(np,np)                       ! wet term from T equ
+    real (kind=r8) :: KEvert1(np,np)                           ! term from continuity equ
+    real (kind=r8) :: KEvert2(np,np)                           ! term from momentum equ
+    real (kind=r8) :: IEvert1(np,np)                           ! term from continuity equ
+    real (kind=r8) :: IEvert2(np,np)                           ! term from T equ
+    real (kind=r8) :: IEvert1_wet(np,np)                       ! wet term from continuity equ
+    real (kind=r8) :: IEvert2_wet(np,np)                       ! wet term from T equ
 
-    real (kind=real_kind) :: KEhorz1(np,np)                           ! at time t
-    real (kind=real_kind) :: KEhorz2(np,np)                           ! after calling time_advance, these will be at time t-1
-    real (kind=real_kind) :: IEhorz1(np,np)
-    real (kind=real_kind) :: IEhorz2(np,np)
-    real (kind=real_kind) :: IEhorz1_wet(np,np)
-    real (kind=real_kind) :: IEhorz2_wet(np,np)
+    real (kind=r8) :: KEhorz1(np,np)                           ! at time t
+    real (kind=r8) :: KEhorz2(np,np)                           ! after calling time_advance, these will be at time t-1
+    real (kind=r8) :: IEhorz1(np,np)
+    real (kind=r8) :: IEhorz2(np,np)
+    real (kind=r8) :: IEhorz1_wet(np,np)
+    real (kind=r8) :: IEhorz2_wet(np,np)
 
-    real (kind=real_kind) :: T1(np,np)
-    real (kind=real_kind) :: T2(np,np)
-    real (kind=real_kind) :: T2_s(np,np)
-    real (kind=real_kind) :: S1(np,np)
-    real (kind=real_kind) :: S1_wet(np,np)
-    real (kind=real_kind) :: S2(np,np)
+    real (kind=r8) :: T1(np,np)
+    real (kind=r8) :: T2(np,np)
+    real (kind=r8) :: T2_s(np,np)
+    real (kind=r8) :: S1(np,np)
+    real (kind=r8) :: S1_wet(np,np)
+    real (kind=r8) :: S2(np,np)
 
     ! the KE conversion term and diffusion term
-    real (kind=real_kind) :: DIFF(np,np,2,nlev)                       ! net hypervis term
-    real (kind=real_kind) :: DIFFT(np,np,nlev)                        ! net hypervis term
-    real (kind=real_kind) :: CONV(np,np,2,nlev)                       ! dpdn u dot CONV = T1 + T2
+    real (kind=r8) :: DIFF(np,np,2,nlev)                       ! net hypervis term
+    real (kind=r8) :: DIFFT(np,np,nlev)                        ! net hypervis term
+    real (kind=r8) :: CONV(np,np,2,nlev)                       ! dpdn u dot CONV = T1 + T2
 #endif
 
     ! the "4" timelevels represents data computed at:
@@ -146,98 +141,16 @@ module element_mod
     !  4  t+.5   after Robert
     ! after calling TimeLevelUpdate, all times above decrease by 1.0
 
-    real (kind=real_kind) :: KEner(np,np,4)
-    real (kind=real_kind) :: PEner(np,np,4)
-    real (kind=real_kind) :: IEner(np,np,4)
-    real (kind=real_kind) :: IEner_wet(np,np,4)
-    real (kind=real_kind) :: Qvar(np,np,qsize_d,4)                    ! Q variance at half time levels
-    real (kind=real_kind) :: Qmass(np,np,qsize_d,4)                   ! Q mass at half time levels
-    real (kind=real_kind) :: Q1mass(np,np,qsize_d)                    ! Q mass at full time levels
+    real (kind=r8) :: KEner(np,np,4)
+    real (kind=r8) :: PEner(np,np,4)
+    real (kind=r8) :: IEner(np,np,4)
+    real (kind=r8) :: IEner_wet(np,np,4)
+    real (kind=r8) :: Qvar(np,np,qsize_d,4)                    ! Q variance at half time levels
+    real (kind=r8) :: Qmass(np,np,qsize_d,4)                   ! Q mass at half time levels
+    real (kind=r8) :: Q1mass(np,np,qsize_d)                    ! Q mass at full time levels
 
   end type elem_accum_t
 
-#elif defined _PRIMDG
-
-! ============ DISCONTINUOUS-GALERKIN DATA-STRUCTURES ================
-
-  type, public :: elem_state_t
-
-    ! prognostic variables for DG primitive-eqn solver
-
-    real (kind=real_kind) :: p(np,np,nlev,timelevels)
-    real (kind=real_kind) :: phis(np,np)                              ! surface geopotential
-    real (kind=real_kind) :: gradps(np,np,2)                          ! gradient of surface geopotential
-    real (kind=real_kind) :: v(np,np,2,nlev,timelevels)               ! contravarient comp
-
-    real (kind=real_kind) :: couv(np,np,2,nlev)                       ! covariant velocities
-    real (kind=real_kind) :: uv(np,np,2,nlev)                         ! redundant copy of v (eliminate?)
-    real (kind=real_kind) :: uv0(np,np,2,nlev)                        ! temp variable for velocities (eliminate?)
-    real (kind=real_kind) :: pgrads(np,np,2,nlev)
-
-    real (kind=real_kind) :: psi(np,np,nlev)
-    real (kind=real_kind) :: phi(np,np,nlev)
-    real (kind=real_kind) :: ht(np,np,nlev)
-    real (kind=real_kind) :: T(np,np,nlev,timelevels)                 ! temperature
-    real (kind=real_kind) :: Q(np,np,nlev,timelevels)                 ! moisture
-    real (kind=real_kind) :: pt3d(np,np,nlev)                         ! potential temperature
-    real (kind=real_kind) :: qt3d(np,np,nlev)
-    real (kind=real_kind) :: peta(np,np,nlev)
-    real (kind=real_kind) :: dp3d(np,np,nlev)
-
-    real (kind=real_kind) :: zeta(np,np,nlev)
-    real (kind=real_kind) :: pr3d(np,np,nlev+1)
-    real (kind=real_kind) :: pr3d_ref(np,np,nlev+1)
-    real (kind=real_kind) :: gp3d(np,np,nlev+1)
-
-    real (kind=real_kind) :: ptop(np,np)
-    real (kind=real_kind) :: sgp(np,np)
-    real (kind=real_kind) :: tbar(nlev)
-
-    ! note: non-state variables should be moved into derived_state_t
-
-  end type elem_state_t
-
-  !___________________________________________________________________
-  type, public :: derived_state_t
-     real (kind=real_kind) :: dummmy
-     real (kind=real_kind) :: vstar(np,np,2,nlev)                     ! velocity on Lagrangian surfaces
-  end type derived_state_t
-
-  !___________________________________________________________________
-  type, public :: elem_accum_t
-    real (kind=real_kind) :: u(np,np,nlev)                            ! zonal velocity on sphere
-    real (kind=real_kind) :: T(np,np,nlev)                            ! temperature
-    real (kind=real_kind) :: ke(np,np,nlev)                           ! kinetic energy
-  end type
-
-#else
-! ================== SHALLOW-WATER DATA-STRUCTURES ===================
-
-  type, public :: elem_state_t
-
-    ! prognostic variables for shallow-water solver
-     real (kind=real_kind) :: p(np,np,nlev,timelevels)
-     real (kind=real_kind) :: ps(np,np)                               ! surface geopotential
-     real (kind=real_kind) :: gradps(np,np,2)                         ! gradient of surface geopotential
-     real (kind=real_kind) :: v(np,np,2,nlev,timelevels)              ! contravarient comp
-
-#ifdef _SWDG
-     ! variables for discontinuous-Galerkin shallow-water
-     real (kind=real_kind) :: couv(np,np,2,nlev)                      ! covarient velocity
-     real (kind=real_kind) :: uv(np,np,2,nlev)                        ! spherical (u,v) velocity  vector
-     real (kind=real_kind) :: psi(np,np,nlev)                         ! (ht+hs)*metdet(G)
-     real (kind=real_kind) :: ht(np,np,nlev)                          ! height variable
-     real (kind=real_kind) :: hs(np,np,nlev)                          ! mountain height
-#endif
-
-  end type elem_state_t
-
-  !___________________________________________________________________
-  type, public :: derived_state_t
-     real (kind=real_kind) :: vstar(np,np,2,nlev)                     ! velocity on Lagrangian surfaces
-  end type derived_state_t
-
-#endif
 
 ! ============= DATA-STRUCTURES COMMON TO ALL SOLVERS ================
 
@@ -259,20 +172,20 @@ module element_mod
      ! Equ-angular gnomonic projection coordinates
      type (cartesian2D_t)     :: cartp(np,np)                         ! gnomonic coords of GLL points
      type (cartesian2D_t)     :: corners(4)                           ! gnomonic coords of element corners
-     real (kind=real_kind)    :: u2qmap(4,2)                          ! bilinear map from ref element to quad in cubedsphere coordinates
+     real (kind=r8)    :: u2qmap(4,2)                          ! bilinear map from ref element to quad in cubedsphere coordinates
                                                                       ! SHOULD BE REMOVED
      ! 3D cartesian coordinates
      type (cartesian3D_t)     :: corners3D(4)
 
      ! Element diagnostics
-     real (kind=real_kind)    :: area                                 ! Area of element
-     real (kind=real_kind)    :: normDinv                             ! some type of norm of Dinv used for CFL
-     real (kind=real_kind)    :: dx_short                             ! short length scale in km
-     real (kind=real_kind)    :: dx_long                              ! long length scale in km
+     real (kind=r8)    :: area                                 ! Area of element
+     real (kind=r8)    :: normDinv                             ! some type of norm of Dinv used for CFL
+     real (kind=r8)    :: dx_short                             ! short length scale in km
+     real (kind=r8)    :: dx_long                              ! long length scale in km
 
-     real (kind=real_kind)    :: variable_hyperviscosity(np,np)       ! hyperviscosity based on above
-     real (kind=real_kind)    :: hv_courant                           ! hyperviscosity courant number
-     real (kind=real_kind)    :: tensorVisc(np,np,2,2)                !og, matrix V for tensor viscosity
+     real (kind=r8)    :: variable_hyperviscosity(np,np)       ! hyperviscosity based on above
+     real (kind=r8)    :: hv_courant                           ! hyperviscosity courant number
+     real (kind=r8)    :: tensorVisc(np,np,2,2)                !og, matrix V for tensor viscosity
 
      ! Edge connectivity information
 !     integer(kind=int_kind)   :: node_numbers(4)
@@ -284,34 +197,32 @@ module element_mod
      type (elem_state_t)      :: state
 
      type (derived_state_t)   :: derived
-#if defined _PRIM || defined _PRIMDG
      type (elem_accum_t)       :: accum
-#endif
      ! Metric terms
-     real (kind=real_kind)    :: met(np,np,2,2)                       ! metric tensor on velocity and pressure grid
-     real (kind=real_kind)    :: metinv(np,np,2,2)                    ! metric tensor on velocity and pressure grid
-     real (kind=real_kind)    :: metdet(np,np)                        ! g = SQRT(det(g_ij)) on velocity and pressure grid
-     real (kind=real_kind)    :: rmetdet(np,np)                       ! 1/metdet on velocity pressure grid
-     real (kind=real_kind)    :: D(np,np,2,2)                         ! Map covariant field on cube to vector field on the sphere
-     real (kind=real_kind)    :: Dinv(np,np,2,2)                      ! Map vector field on the sphere to covariant v on cube
+     real (kind=r8)    :: met(np,np,2,2)                       ! metric tensor on velocity and pressure grid
+     real (kind=r8)    :: metinv(np,np,2,2)                    ! metric tensor on velocity and pressure grid
+     real (kind=r8)    :: metdet(np,np)                        ! g = SQRT(det(g_ij)) on velocity and pressure grid
+     real (kind=r8)    :: rmetdet(np,np)                       ! 1/metdet on velocity pressure grid
+     real (kind=r8)    :: D(np,np,2,2)                         ! Map covariant field on cube to vector field on the sphere
+     real (kind=r8)    :: Dinv(np,np,2,2)                      ! Map vector field on the sphere to covariant v on cube
 
      ! Convert vector fields from spherical to rectangular components
      ! The transpose of this operation is its pseudoinverse.
-     real (kind=real_kind)    :: vec_sphere2cart(np,np,3,2)
+     real (kind=r8)    :: vec_sphere2cart(np,np,3,2)
 
      ! Mass matrix terms for an element on a cube face
-     real (kind=real_kind)    :: mp(np,np)                            ! mass matrix on v and p grid
-     real (kind=real_kind)    :: rmp(np,np)                           ! inverse mass matrix on v and p grid
+     real (kind=r8)    :: mp(np,np)                            ! mass matrix on v and p grid
+     real (kind=r8)    :: rmp(np,np)                           ! inverse mass matrix on v and p grid
 
      ! Mass matrix terms for an element on the sphere
      ! This mass matrix is used when solving the equations in weak form
      ! with the natural (surface area of the sphere) inner product
-     real (kind=real_kind)    :: spheremp(np,np)                      ! mass matrix on v and p grid
-     real (kind=real_kind)    :: rspheremp(np,np)                     ! inverse mass matrix on v and p grid
+     real (kind=r8)    :: spheremp(np,np)                      ! mass matrix on v and p grid
+     real (kind=r8)    :: rspheremp(np,np)                     ! inverse mass matrix on v and p grid
 
      integer(kind=long_kind)  :: gdofP(np,np)                         ! global degree of freedom (P-grid)
 
-     real (kind=real_kind)    :: fcor(np,np)                          ! Coreolis term
+     real (kind=r8)    :: fcor(np,np)                          ! Coreolis term
 
      type (index_t) :: idxP
      type (index_t),pointer :: idxV
@@ -361,15 +272,14 @@ contains
 
     ! Initialize 2D rectilinear element colocation points
 
-    use kinds, only : longdouble_kind
     type (cartesian2D_t), intent(in) :: start
     type (cartesian2D_t), intent(in) :: end
-    real (kind=longdouble_kind), intent(in) :: points(:)
+    real(r8),             intent(in) :: points(:)
+    type (cartesian2D_t)             :: cart(SIZE(points),SIZE(points))
 
-    type (cartesian2D_t) :: cart(SIZE(points),SIZE(points))
     type (cartesian2D_t) :: length, centroid
-    real (kind=longdouble_kind) :: y
-    integer i,j
+    real(r8)             :: y
+    integer              :: i,j
 
     length%x   = 0.50D0*(end%x-start%x)
     length%y   = 0.50D0*(end%y-start%y)
@@ -387,14 +297,13 @@ contains
   !___________________________________________________________________
   function element_var_coordinates(c,points) result(cart)
 
-    use kinds, only : longdouble_kind
     type (cartesian2D_t), intent(in) :: c(4)
-    real (kind=longdouble_kind), intent(in) :: points(:)
-    type (cartesian2D_t) :: cart(SIZE(points),SIZE(points))
+    real(r8),             intent(in) :: points(:)
+    type (cartesian2D_t)             :: cart(SIZE(points),SIZE(points))
 
-    real (kind=longdouble_kind) :: p(size(points))
-    real (kind=longdouble_kind) :: q(size(points))
-    integer i,j
+    real(r8) :: p(size(points))
+    real(r8) :: q(size(points))
+    integer  :: i,j
 
     p(:) = (1.0D0-points(:))/2.0D0
     q(:) = (1.0D0+points(:))/2.0D0
@@ -416,14 +325,14 @@ contains
   !___________________________________________________________________
   function element_var_coordinates3d(c,points) result(cart)
 
-    use kinds, only : longdouble_kind
-    type (cartesian3D_t), intent(in) :: c(4)
-    real (kind=longdouble_kind), intent(in) :: points(:)
-    type (cartesian3D_t) :: cart(SIZE(points),SIZE(points))
+    type(cartesian3D_t), intent(in) :: c(4)
+    real(r8), intent(in) :: points(:)
 
-    real (kind=longdouble_kind) :: p(size(points))
-    real (kind=longdouble_kind) :: q(size(points)),r
-    integer i,j
+    type(cartesian3D_t)  :: cart(SIZE(points),SIZE(points))
+
+    real(r8) :: p(size(points))
+    real(r8) :: q(size(points)), r
+    integer  :: i,j
 
     p(:) = (1.0D0-points(:))/2.0D0
     q(:) = (1.0D0+points(:))/2.0D0

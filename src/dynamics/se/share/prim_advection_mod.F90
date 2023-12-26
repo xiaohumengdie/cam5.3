@@ -84,7 +84,6 @@ module vertremap_mod
   use hybvcoord_mod, only          : hvcoord_t
   use element_mod, only            : element_t
   use fvm_control_volume_mod, only : fvm_struct
-  use spelt_mod, only              : spelt_struct
   use perf_mod, only               : t_startf, t_stopf  ! _EXTERNAL
   use parallel_mod, only           : abortmp, parallel_t
   use control_mod, only : vert_remap_q_alg
@@ -843,13 +842,12 @@ module prim_advection_mod
 !
 !
   use kinds, only              : real_kind
-  use dimensions_mod, only     : nlev, nlevp, np, qsize, ntrac, nc, nep
+  use dimensions_mod, only     : nlev, nlevp, np, qsize, ntrac, nc
   use physical_constants, only : rgas, Rwater_vapor, kappa, g, rearth, rrearth, cp
   use derivative_mod, only     : gradient, vorticity, gradient_wk, derivative_t, divergence, &
                                  gradient_sphere, divergence_sphere
   use element_mod, only        : element_t
   use fvm_control_volume_mod, only        : fvm_struct
-  use spelt_mod, only          : spelt_struct
   use filter_mod, only         : filter_t, filter_P
   use hybvcoord_mod, only      : hvcoord_t
   use time_mod, only           : TimeLevel_t, smooth, TimeLevel_Qdp
@@ -875,9 +873,6 @@ module prim_advection_mod
   public :: Prim_Advec_Init1, Prim_Advec_Init2
   public :: Prim_Advec_Tracers_remap, Prim_Advec_Tracers_remap_rk2, Prim_Advec_Tracers_remap_ALE
   public :: prim_advec_tracers_fvm
-#if defined(_SPELT)
-  public :: prim_advec_tracers_spelt
-#endif
   public :: vertical_remap
 
   type (EdgeBuffer_t) :: edgeAdv, edgeAdvp1, edgeAdvQminmax, edgeAdv1,  edgeveloc
@@ -934,131 +929,20 @@ contains
 
   end subroutine Prim_Advec_Init1
 
-  subroutine Prim_Advec_Init2(hybrid,fvm_corners, fvm_points, spelt_refnep)
+  subroutine Prim_Advec_Init2(hybrid,fvm_corners, fvm_points)
     use kinds,          only : longdouble_kind
-    use dimensions_mod, only : nc, nep
+    use dimensions_mod, only : nc
     use derivative_mod, only : derivinit
 
     type (hybrid_t), intent(in) :: hybrid
     real(kind=longdouble_kind), intent(in) :: fvm_corners(nc+1)
     real(kind=longdouble_kind), intent(in) :: fvm_points(nc)
-    real(kind=longdouble_kind), intent(in) :: spelt_refnep(1:nep)
 
     ! ==================================
     ! Initialize derivative structure
     ! ==================================
-    call derivinit(deriv(hybrid%ithr),fvm_corners, fvm_points, spelt_refnep)
+    call derivinit(deriv(hybrid%ithr),fvm_corners, fvm_points)
   end subroutine Prim_Advec_Init2
-
-#if defined(_SPELT)
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! SPELT driver
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine Prim_Advec_Tracers_spelt(elem, spelt, deriv,hvcoord,hybrid,&
-        dt,tl,nets,nete)
-    use perf_mod, only : t_startf, t_stopf            ! _EXTERNAL
-    use spelt_mod, only : spelt_run, spelt_runpos, spelt_runair, spelt_runlimit, edgeveloc, spelt_mcgregordss, spelt_rkdss
-    use derivative_mod, only : interpolate_gll2spelt_points
-    use vertremap_mod, only: remap1_nofilter ! _EXTERNAL (actually INTERNAL)
-
-    implicit none
-    type (element_t), intent(inout)   :: elem(:)
-    type (spelt_struct), intent(inout)  :: spelt(:)
-    type (derivative_t), intent(in)   :: deriv
-    type (hvcoord_t)                  :: hvcoord
-    type (hybrid_t),     intent(in):: hybrid
-    type (TimeLevel_t)                :: tl
-
-    real(kind=real_kind) , intent(in) :: dt
-    integer,intent(in)                :: nets,nete
-
-    real (kind=real_kind), dimension(np,np,nlev)    :: dp_star
-    real (kind=real_kind), dimension(np,np,nlev)    :: dp
-
-    integer :: np1,ie,k, i, j
-
-
-    call t_barrierf('sync_prim_advec_tracers_spelt', hybrid%par%comm)
-    call t_startf('prim_advec_tracers_spelt')
-    np1 = tl%np1
-    ! departure algorithm requires two velocities:
-    !
-    ! spelt%v0:      velocity at beginning of tracer timestep (time n0_qdp)
-    !                this was saved before the (possibly many) dynamics steps
-    ! elem%derived%vstar:    
-    !                velocity at end of tracer timestep (time np1 = np1_qdp)
-    !                for lagrangian dynamics, this is on lagrangian levels
-    !                for eulerian dynamcis, this is on reference levels
-    !                and it should be interpolated.
-    !
-    do ie=nets,nete
-       elem(ie)%derived%vstar(:,:,:,:)=elem(ie)%state%v(:,:,:,:,np1)
-    enddo
-
-    if (rsplit==0) then
-       ! interpolate t+1 velocity from reference levels to lagrangian levels
-       ! For rsplit=0, we need to first compute lagrangian levels based on vertical velocity
-       ! which requires we first DSS mean vertical velocity from dynamics
-       do ie=nets,nete
-          do k=1,nlev
-             elem(ie)%derived%eta_dot_dpdn(:,:,k) = elem(ie)%spheremp(:,:)*elem(ie)%derived%eta_dot_dpdn(:,:,k)
-          enddo
-          call edgeVpack(edgeAdv1,elem(ie)%derived%eta_dot_dpdn(:,:,1:nlev),nlev,0,ie)
-       enddo
-       call bndry_exchangeV(hybrid,edgeAdv1)
-       do ie=nets,nete
-          call edgeVunpack(edgeAdv1,elem(ie)%derived%eta_dot_dpdn(:,:,1:nlev),nlev,0,ie)
-          do k=1,nlev
-             elem(ie)%derived%eta_dot_dpdn(:,:,k)=elem(ie)%derived%eta_dot_dpdn(:,:,k)*elem(ie)%rspheremp(:,:)
-          enddo
-          ! SET VERTICAL VELOCITY TO ZERO FOR DEBUGGING
-          elem(ie)%derived%eta_dot_dpdn(:,:,:)=0
-
-          ! elem%state%u(np1)  = velocity at time t+1 on reference levels
-          ! elem%derived%vstar = velocity at t+1 on floating levels (computed below) using eta_dot_dpdn
-!           call remap_UV_ref2lagrange(np1,dt,elem,hvcoord,ie)
-          do k=1,nlev
-             dp(:,:,k) = ( hvcoord%hyai(k+1) - hvcoord%hyai(k) )*hvcoord%ps0 + &
-                  ( hvcoord%hybi(k+1) - hvcoord%hybi(k) )*elem(ie)%state%ps_v(:,:,np1)
-             dp_star(:,:,k) = dp(:,:,k) + dt*(elem(ie)%derived%eta_dot_dpdn(:,:,k+1) -&
-                  elem(ie)%derived%eta_dot_dpdn(:,:,k))
-          enddo
-          !elem(ie)%derived%vstar=elem(ie)%state%v(:,:,:,:,np1) ; done above
-          call remap1_nofilter(elem(ie)%derived%vstar,np,1,dp,dp_star)
-          !take the average on level, should be improved later, because we know the SE velocity at t+1/2
-          spelt(ie)%vn12=(spelt(ie)%vn0+elem(ie)%derived%vstar)/2.0D0
-       end do
-    else
-       ! for rsplit>0:  do nothing.
-       ! dynamics is also vertically lagrangian, so we do not need to
-       ! remap the velocities and we dont need eta_dot_dpdn
-    endif
-
-
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! 2D advection step
-    !
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!------------------------------------------------------------------------------------
-
-!     call t_startf('spelt_depalg')
-!     call spelt_mcgregordss(elem,spelt,nets,nete, hybrid, deriv, dt, 3)
-    call spelt_rkdss(elem,spelt,nets,nete, hybrid, deriv, dt, 3)
-!     call t_stopf('spelt_depalg')
-
-    ! ! end mcgregordss
-    ! spelt departure calcluation should use vstar.
-    ! from c(n0) compute c(np1):
-!     call spelt_run(elem,spelt,hybrid,deriv,dt,tl,nets,nete)
-
-    call spelt_runair(elem,spelt,hybrid,deriv,dt,tl,nets,nete)
-!     call spelt_runpos(elem,spelt,hybrid,deriv,dt,tl,nets,nete)
-!       call spelt_runlimit(elem,spelt,hybrid,deriv,dt,tl,nets,nete)
-    call t_stopf('prim_advec_tracers_spelt')
-  end subroutine Prim_Advec_Tracers_spelt
-#endif
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1860,18 +1744,11 @@ end subroutine ALE_parametric_coords
 !-----------------------------------------------------------------------------
 
   subroutine qdp_time_avg( elem , rkstage , n0_qdp , np1_qdp , limiter_option , nu_p , nets , nete )
-#if USE_CUDA_FORTRAN
-    use cuda_mod, only: qdp_time_avg_cuda
-#endif
     implicit none
     type(element_t)     , intent(inout) :: elem(:)
     integer             , intent(in   ) :: rkstage , n0_qdp , np1_qdp , nets , nete , limiter_option
     real(kind=real_kind), intent(in   ) :: nu_p
     integer :: ie,q,i,j,k
-#if USE_CUDA_FORTRAN
-    call qdp_time_avg_cuda( elem , rkstage , n0_qdp , np1_qdp , limiter_option , nu_p , nets , nete )
-    return
-#endif
     do ie=nets,nete
       do q=1,qsize
         do k=1,nlev
@@ -1903,16 +1780,13 @@ end subroutine ALE_parametric_coords
   !
   ! ===================================
   use kinds          , only : real_kind
-  use dimensions_mod , only : np, npdg, nlev
+  use dimensions_mod , only : np, nlev
   use hybrid_mod     , only : hybrid_t
   use element_mod    , only : element_t
   use derivative_mod , only : derivative_t, divergence_sphere, gradient_sphere, vorticity_sphere
   use edge_mod       , only : edgevpack, edgevunpack
   use bndry_mod      , only : bndry_exchangev
   use hybvcoord_mod  , only : hvcoord_t
-#if USE_CUDA_FORTRAN
-  use cuda_mod, only: euler_step_cuda
-#endif
   implicit none
   integer              , intent(in   )         :: np1_qdp, n0_qdp
   real (kind=real_kind), intent(in   )         :: dt
@@ -1945,14 +1819,6 @@ end subroutine ALE_parametric_coords
     dp0(k) = ( hvcoord%hyai(k+1) - hvcoord%hyai(k) )*hvcoord%ps0 + &
              ( hvcoord%hybi(k+1) - hvcoord%hybi(k) )*hvcoord%ps0
   enddo
-  if ( npdg > 0 ) then
-    call euler_step_dg( np1_qdp , n0_qdp , dt , elem , hvcoord , hybrid , deriv , nets , nete , DSSopt , rhs_multiplier )
-    return
-  endif
-#if USE_CUDA_FORTRAN
-  call euler_step_cuda( np1_qdp , n0_qdp , dt , elem , hvcoord , hybrid , deriv , nets , nete , DSSopt , rhs_multiplier )
-  return
-#endif
 ! call t_barrierf('sync_euler_step', hybrid%par%comm)
 !   call t_startf('euler_step')
 
@@ -2276,204 +2142,6 @@ end subroutine ALE_parametric_coords
 !   call t_stopf('euler_step')
   end subroutine euler_step
 
-!-----------------------------------------------------------------------------
-!-----------------------------------------------------------------------------
-!-----------------------------------------------------------------------------
-
-!-----------------------------------------------------------------------------
-!-----------------------------------------------------------------------------
-
-  subroutine euler_step_dg(np1_qdp, n0_qdp, dt,elem,hvcoord,hybrid,deriv,nets,nete,&
-      DSSopt,rhs_multiplier)
-  ! ===================================
-  ! This routine is the basic foward
-  ! euler component used to construct RK SSP methods
-  !
-  !           u(np1) = u(n0) + dt2*DSS[ RHS(u(n0)) ]
-  !
-  ! n0 can be the same as np1.
-  !
-  ! DSSopt = DSSeta or DSSomega:   also DSS eta_dot_dpdn or omega
-  !
-  ! ===================================
-  use kinds, only : real_kind
-  use dimensions_mod, only : np, npdg, nlev
-  use hybrid_mod, only : hybrid_t
-  use element_mod, only : element_t
-  use derivative_mod, only : derivative_t, divergence_sphere_wk, edge_flux_u_cg, gll_to_dgmodal, dgmodal_to_gll
-  use edge_mod, only : edgevpack, edgevunpack, edgedgvunpack
-  use bndry_mod, only : bndry_exchangev
-  use hybvcoord_mod, only : hvcoord_t
-
-  implicit none
-  integer :: np1_qdp, n0_qdp, nets, nete, DSSopt, rhs_multiplier
-  real (kind=real_kind), intent(in)  :: dt
-
-  type (hvcoord_t)     , intent(in) :: hvcoord
-  type (hybrid_t)      , intent(in) :: hybrid
-  type (element_t)     , intent(inout), target :: elem(:)
-  type (derivative_t)  , intent(in) :: deriv
-
-  ! local
-  real (kind=real_kind), dimension(np,np)    :: divdp
-  real (kind=real_kind), dimension(npdg,npdg)    :: pshat
-  real (kind=real_kind), dimension(0:np+1,0:np+1,nlev,qsize)    :: qedges
-  real (kind=real_kind), dimension(np,np,2)    :: vtemp
-  real (kind=real_kind), dimension(np,np)    :: div_tmp
-  real(kind=real_kind), dimension(np,np,nlev) :: dp,dp_star
-  real(kind=real_kind), dimension(np,np,2,nlev) :: Vstar
-  real (kind=real_kind), pointer, dimension(:,:,:)   :: DSSvar
-! nelemd
-
-  real(kind=real_kind) :: dp0
-  integer :: ie,q,i,j,k
-  integer :: rhs_viss=0
-
-  call t_barrierf('sync_euler_step_dg', hybrid%par%comm)
-  call t_startf('euler_step_dg')
-
-
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  !   compute Q min/max values for lim8
-  !   compute biharmonic mixing term f
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  rhs_viss=0
-  if (limiter_option /= 4) then
-     call abortmp('only limiter_opiton=4 supported for dg advection')
-     ! todo:  we need to track a 'dg' mass, and use that to back out Q
-     ! then compute Qmin/Qmax here
-  endif
-
-
-
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  !   2D Advection step
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  do ie=nets,nete
-
-     ! note: eta_dot_dpdn is actually dimension nlev+1, but nlev+1 data is
-     ! all zero so we only have to DSS 1:nlev
-     if ( DSSopt == DSSeta) DSSvar => elem(ie)%derived%eta_dot_dpdn(:,:,:)
-     if ( DSSopt == DSSomega) DSSvar => elem(ie)%derived%omega_p(:,:,:)
-     if ( DSSopt == DSSdiv_vdp_ave) DSSvar => elem(ie)%derived%divdp_proj(:,:,:)
-
-     if(DSSopt==DSSno_var)then
-	call edgeVpack(edgeAdv,elem(ie)%state%Qdp(:,:,:,:,n0_qdp),nlev*qsize,0,ie)
-     else
-	call edgeVpack(edgeAdvp1,elem(ie)%state%Qdp(:,:,:,:,n0_qdp),nlev*qsize,0,ie)
-	! also DSS extra field
-#if (defined COLUMN_OPENMP)
-!$omp parallel do private(k)
-#endif
-	do k=1,nlev
-	    DSSvar(:,:,k) = elem(ie)%spheremp(:,:)*DSSvar(:,:,k)
-	enddo
-	call edgeVpack(edgeAdvp1,DSSvar(:,:,1:nlev),nlev,nlev*qsize,ie)
-     endif
-
-  end do
-
-  if(DSSopt==DSSno_var)then
-     call bndry_exchangeV(hybrid,edgeAdv)
-  else
-     call bndry_exchangeV(hybrid,edgeAdvp1)
-  endif
-
-  do ie=nets,nete
-
-     if ( DSSopt == DSSeta) DSSvar => elem(ie)%derived%eta_dot_dpdn(:,:,:)
-     if ( DSSopt == DSSomega) DSSvar => elem(ie)%derived%omega_p(:,:,:)
-     if ( DSSopt == DSSdiv_vdp_ave) DSSvar => elem(ie)%derived%divdp_proj(:,:,:)
-
-     if(DSSopt==DSSno_var)then
-	call edgeDGVunpack(edgeAdv,qedges,nlev*qsize,0,ie)
-     else
-	call edgeDGVunpack(edgeAdvp1,qedges,nlev*qsize,0,ie)
-	call edgeVunpack(edgeAdvp1,DSSvar(:,:,1:nlev),nlev,qsize*nlev,ie)
-	do k=1,nlev
-	  DSSvar(:,:,k)=DSSvar(:,:,k)*elem(ie)%rspheremp(:,:)
-	enddo
-     endif
-
-     ! compute flux and advection term
-#if (defined COLUMN_OPENMP)
-!$omp parallel do private(k)
-#endif
-     do k=1,nlev
-        dp(:,:,k) = elem(ie)%derived%dp(:,:,k) - &
-             rhs_multiplier*dt*elem(ie)%derived%divdp_proj(:,:,k)
-        Vstar(:,:,1,k) = elem(ie)%derived%vn0(:,:,1,k)/dp(:,:,k)
-        Vstar(:,:,2,k) = elem(ie)%derived%vn0(:,:,2,k)/dp(:,:,k)
-     enddo
-
-#if (defined COLUMN_OPENMP)
-!$omp parallel do private(q,k,vtemp,divdp,pshat,j,i)
-#endif
-     do q=1,qsize
-        do k=1,nlev
-           vtemp(:,:,1)=elem(ie)%state%Qdp(:,:,k,q,n0_qdp)*Vstar(:,:,1,k)
-           vtemp(:,:,2)=elem(ie)%state%Qdp(:,:,k,q,n0_qdp)*Vstar(:,:,2,k)
-
-           !divdp = divergence_sphere_wk(vtemp,deriv,elem(ie)) + &
-           !     edge_flux_u_cg( Vstar(:,:,:,k), elem(ie)%state%Qdp(:,:,k,q,n0_qdp),qedges(:,:,k,q),&
-           !     deriv, elem(ie), u_is_contra=.false.)
-           call divergence_sphere_wk(vtemp,deriv,elem(ie),div_tmp)
-           divdp = div_tmp + &
-                edge_flux_u_cg( Vstar(:,:,:,k), elem(ie)%state%Qdp(:,:,k,q,n0_qdp),qedges(:,:,k,q),&
-                deriv, elem(ie), u_is_contra=.false.)
-
-           ! advance in time. GLL quadrature, cardinal function basis, under-integrated.
-           ! local mass matrix is diagonal, with entries elem(ie)%spheremp(),
-           ! so we divide through by elem(ie)%spheremp().
-           elem(ie)%state%Qdp(:,:,k,q,np1_qdp)=elem(ie)%state%Qdp(:,:,k,q,n0_qdp) - dt*divdp/elem(ie)%spheremp
-
-           if (npdg<np) then
-              ! modal timestep, with exact integration.  using prognostic variable: p*metdet
-              ! local mass matrix is diagonal assuming npdg<np so that GLL quadrature is exact)
-              ! (note: GLL/modal conversion comutes with time-stepping)
-
-              ! compute modal coefficients of p*metdet
-              ! (spherical inner-product of Legendre polynomial and p)
-              ! pshat = gll_to_dgmodal(elem(ie)%state%Qdp(:,:,k,q,np1_qdp)*elem(ie)%metdet(:,:),deriv)
-              call gll_to_dgmodal(elem(ie)%state%Qdp(:,:,k,q,np1_qdp)*elem(ie)%metdet(:,:),deriv,pshat)
-
-              ! modal based limiter goes here
-              ! apply a little dissipation to last mode:
-              do j=1,npdg
-              do i=1,npdg
-                 !if ( (i-1)+(j-1) == 4) pshat(i,j)=pshat(i,j)*.75
-                 !if ( (i-1)+(j-1) == 3) pshat(i,j)=pshat(i,j)*.90
-                 if ( i==npdg) pshat(i,j)=pshat(i,j)*.90
-                 if ( j==npdg) pshat(i,j)=pshat(i,j)*.90
-              enddo
-              enddo
-
-
-              ! evalute modal expanion of p*metdet on GLL points
-              ! divdp=dgmodal_to_gll(pshat,deriv)
-              call dgmodal_to_gll(pshat,deriv,divdp)
-
-              ! convert from p*metdet back to p:
-              elem(ie)%state%Qdp(:,:,k,q,np1_qdp)=divdp/elem(ie)%metdet(:,:)
-           endif
-        enddo
-        if(limiter_option == 4)then
-           ! reuse CG limiter, which wants Qdp*spheremp:
-           do k=1,nlev
-              elem(ie)%state%Qdp(:,:,k,q,np1_qdp)=elem(ie)%state%Qdp(:,:,k,q,np1_qdp)*elem(ie)%spheremp(:,:)
-           enddo
-           call limiter2d_zero(elem(ie)%state%Qdp(:,:,:,q,np1_qdp))
-           do k=1,nlev
-              elem(ie)%state%Qdp(:,:,k,q,np1_qdp)=elem(ie)%state%Qdp(:,:,k,q,np1_qdp)/elem(ie)%spheremp(:,:)
-           enddo
-        endif
-     end do
-  end do
-  call t_stopf('euler_step_dg')
-
-  end subroutine euler_step_dg
-
-!-----------------------------------------------------------------------------
 !-----------------------------------------------------------------------------
 !-----------------------------------------------------------------------------
 
@@ -2901,9 +2569,6 @@ end subroutine ALE_parametric_coords
   !          Q(:,:,:,np) = Q(:,:,:,np) +  dt2*nu*laplacian**order ( Q )
   !
   !  For correct scaling, dt2 should be the same 'dt2' used in the leapfrog advace
-#if USE_CUDA_FORTRAN
-  use cuda_mod       , only : advance_hypervis_scalar_cuda
-#endif
   use kinds          , only : real_kind
   use dimensions_mod , only : np, nlev
   use hybrid_mod     , only : hybrid_t
@@ -2941,10 +2606,6 @@ end subroutine ALE_parametric_coords
   integer :: density_scaling = 0
   if ( nu_q           == 0 ) return
   if ( hypervis_order /= 2 ) return
-#if USE_CUDA_FORTRAN
-  call advance_hypervis_scalar_cuda( edgeAdv , elem , hvcoord , hybrid , deriv , nt , nt_qdp , nets , nete , dt2 )
-  return
-#endif
 !   call t_barrierf('sync_advance_hypervis_scalar', hybrid%par%comm)
   call t_startf('advance_hypervis_scalar')
 
@@ -3053,25 +2714,12 @@ end subroutine ALE_parametric_coords
   use parallel_mod, only : abortmp
   use hybrid_mod     , only : hybrid_t
   use derivative_mod, only : interpolate_gll2fvm_points
-#if defined(_SPELT)
-  use spelt_mod, only: spelt_struct
-#else
   use fvm_control_volume_mod, only : fvm_struct
-#endif
-#if USE_CUDA_FORTRAN
-  use cuda_mod, only: vertical_remap_cuda
-#endif
 
   type (hybrid_t), intent(in) :: hybrid  ! distributed parallel structure (shared)
-#if defined(_SPELT)
-  type(spelt_struct), intent(inout) :: fvm(:)
-  real (kind=real_kind) :: cdp(1:nep,1:nep,nlev,ntrac-1)
-  real (kind=real_kind)  :: psc(nep,nep), dpc(nep,nep,nlev),dpc_star(nep,nep,nlev)
-#else
   type(fvm_struct), intent(inout) :: fvm(:)
   real (kind=real_kind) :: cdp(1:nc,1:nc,nlev,ntrac)
   real (kind=real_kind)  :: psc(nc,nc), dpc(nc,nc,nlev),dpc_star(nc,nc,nlev)
-#endif
 
   !    type (hybrid_t), intent(in)       :: hybrid  ! distributed parallel structure (shared)
   type (element_t), intent(inout)   :: elem(:)
@@ -3082,10 +2730,6 @@ end subroutine ALE_parametric_coords
   real (kind=real_kind), dimension(np,np,nlev)  :: dp,dp_star
   real (kind=real_kind), dimension(np,np,nlev,2)  :: ttmp
 
-#if USE_CUDA_FORTRAN
-  call vertical_remap_cuda(elem,fvm,hvcoord,dt,np1,np1_qdp,nets,nete)
-  return
-#endif
 
   call t_startf('vertical_remap')
 
@@ -3170,32 +2814,6 @@ end subroutine ALE_parametric_coords
 
 
      if (ntrac>0) then
-#if defined(_SPELT)
-        do i=1,nep
-          do j=1,nep
-            ! 1. compute surface pressure, 'ps_c', from SPELT air density
-            psc(i,j)=sum(fvm(ie)%c(i,j,:,1,np1)) +  hvcoord%hyai(1)*hvcoord%ps0
-            ! 2. compute dp_np1 using CSLAM air density and eta coordinate formula
-            ! get the dp now on the eta coordinates (reference level)
-            do k=1,nlev
-              dpc(i,j,k) = (hvcoord%hyai(k+1) - hvcoord%hyai(k))*hvcoord%ps0 + &
-                              (hvcoord%hybi(k+1) - hvcoord%hybi(k))*psc(i,j)
-              cdp(i,j,k,1:(ntrac-1))=fvm(ie)%c(i,j,k,2:ntrac,np1)*fvm(ie)%c(i,j,k,1,np1)
-              dpc_star(i,j,k)=fvm(ie)%c(i,j,k,1,np1)
-            end do
-          end do
-        end do
-        call remap1(cdp,nep,ntrac-1,dpc_star,dpc)
-        do i=1,nep
-          do j=1,nep
-            do k=1,nlev
-              fvm(ie)%c(i,j,k,1,np1)=dpc(i,j,k)
-              fvm(ie)%c(i,j,k,2:ntrac,np1)=cdp(i,j,k,1:(ntrac-1))/dpc(i,j,k)
-            end do
-          end do
-        end do
-!         call remap_velocityCspelt(np1,dt,elem,fvm,hvcoord,ie)
-#else
         ! create local variable  cdp(1:nc,1:nc,nlev,ntrac)
         ! cdp(:,:,:,n) = fvm%c(:,:,:,n,np1)*fvm%dp_fvm(:,:,:,np1)
         ! dp(:,:,:) = reference level thicknesses
@@ -3239,7 +2857,6 @@ end subroutine ALE_parametric_coords
           end do
         end if
 !         call remap_velocityC(np1,dt,elem,fvm,hvcoord,ie)
-#endif
      endif
 
   enddo

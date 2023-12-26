@@ -19,6 +19,7 @@ module schedule_mod
   integer,public,parameter :: HME_CYCLE_MOVE=3
   integer,public,parameter :: HME_CYCLE_ANY =4
 
+
   integer,public,parameter :: BNDRY_EXCHANGE_MESSAGE=10
   integer,private,allocatable,target  :: Global2Local(:)
 
@@ -141,17 +142,17 @@ contains
     allocate(LSchedule%pIndx(max_neigh_edges*nelemd0))
     allocate(LSchedule%gIndx(max_neigh_edges*nelemd0))
 
-    LSchedule%pIndx(:)%elemId = -1
-    LSchedule%pIndx(:)%edgeId = -1
-    LSchedule%pIndx(:)%lenP   = -1
-    LSchedule%pIndx(:)%lenS   = -1
-    LSchedule%pIndx(:)%mesgid = -1
+    LSchedule%pIndx(:)%elemId   = -1
+    LSchedule%pIndx(:)%edgeId   = -1
+    LSchedule%pIndx(:)%lenP     = -1
+    LSchedule%pIndx(:)%lenS     = -1
+    LSchedule%pIndx(:)%mesgid   = -1
 
-    LSchedule%gIndx(:)%elemId = -1
-    LSchedule%gIndx(:)%edgeId = -1
-    LSchedule%gIndx(:)%lenP   = -1
-    LSchedule%gIndx(:)%lenS   = -1
-    LSchedule%gIndx(:)%mesgid = -1
+    LSchedule%gIndx(:)%elemId   = -1
+    LSchedule%gIndx(:)%edgeId   = -1
+    LSchedule%gIndx(:)%lenP     = -1
+    LSchedule%gIndx(:)%lenS     = -1
+    LSchedule%gIndx(:)%mesgid   = -1
 
     LSchedule%pPtr=1
     LSchedule%gPtr=1
@@ -320,13 +321,9 @@ contains
    
    call MPI_Comm_size(par%intracomm, par%intracommsize, ierr)
    call MPI_Comm_rank(par%intracomm, par%intracommrank, ierr)
-!   print *,'IAM: ',iam,' intracommsize: ',par%intracommsize
 
    allocate(intracommranks(par%intracommsize))
    call MPI_Allgather(par%rank,1,MPIinteger_t,intracommranks,1,MPIinteger_t,par%intracomm,ierr)
-!   if(iam .eq. 1) then 
-!       print *,'IAM: ',iam,' intracommranks: ',intracommranks
-!   endif
 
    numIntra=0
    do icycle=1,nSend
@@ -344,10 +341,6 @@ contains
    enddo
    numInter = nsend-numIntra 
 
-!JMD Diagnostic statements.
-!   write(iulog,200) iam, nsend-numIntra,nSend
-!   write(iulog,201) iam, numIntra,nSend
-   
    
    deallocate(intracommranks)
 #else
@@ -421,7 +414,6 @@ contains
     LSchedule%destFull(:) = destFull(:)
     LSchedule%srcFull(:)  = srcFull(:)
     ! construct the FULL communication -group- (for one-sided operations):
-    ! call MPI_Comm_group(par%commGraphfull, par%groupGraphFull, ierr)
     call MPI_Comm_group(par%comm, groupFull, ierr)
     call MPI_group_incl(groupFull,nRecv,srcFull,par%groupGraphFull,ierr)
     if (ierr .ne. MPI_SUCCESS) then

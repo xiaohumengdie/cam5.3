@@ -29,7 +29,6 @@ module prim_state_mod
   use element_mod, only : element_t
   ! ------------------------------
   use fvm_control_volume_mod, only : fvm_struct
-  use spelt_mod, only : spelt_struct
   ! ------------------------------
   use viscosity_mod, only : compute_zeta_C0
   ! ------------------------------
@@ -85,11 +84,7 @@ contains
 
     type (element_t), intent(in) :: elem(:)
     
-#if defined(_SPELT)
-      type(spelt_struct), optional, intent(in) :: fvm(:)
-#else
-      type(fvm_struct), optional, intent(in) :: fvm(:)
-#endif
+    type(fvm_struct), optional, intent(in) :: fvm(:)
     type (TimeLevel_t), target, intent(in) :: tl
     type (hybrid_t),intent(in)     :: hybrid
     type (hvcoord_t), intent(in)   :: hvcoord
