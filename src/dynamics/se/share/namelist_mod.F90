@@ -94,7 +94,6 @@ module namelist_mod
        TRACERTRANSPORT_SEMILAGRANG_GLL, &
        TRACERTRANSPORT_LAGRANGIAN_FVM,  &
        TRACERTRANSPORT_FLUXFORM_FVM,    &
-       TRACERTRANSPORT_SPELT_FVM,       &
        tracer_grid_type,                &
        TRACER_GRIDTYPE_GLL,             &
        TRACER_GRIDTYPE_FVM,             &
@@ -105,7 +104,7 @@ module namelist_mod
   !-----------------
   use thread_mod, only : omp_get_max_threads, max_num_threads, horz_num_threads, vert_num_threads, tracer_num_threads
   !-----------------
-  use dimensions_mod, only : ne, np, npdg, nnodes, nmpi_per_node, npart, ntrac, ntrac_d, qsize, qsize_d, set_mesh_dimensions
+  use dimensions_mod, only : ne, np, nnodes, nmpi_per_node, npart, ntrac, ntrac_d, qsize, qsize_d, set_mesh_dimensions
   !-----------------
 #ifdef CAM
   use time_mod, only : nsplit, smooth, phys_tscale
@@ -115,8 +114,6 @@ module namelist_mod
   !-----------------
   use parallel_mod, only : parallel_t,  iam, abortmp, &
        partitionfornodes, useframes, mpireal_t, mpilogical_t, mpiinteger_t, mpichar_t
-  !-----------------
-  use cg_mod, only : cg_no_debug
   !-----------------
 
   use interpolate_mod, only : vector_uvars, vector_vvars, max_vecvars, interpolate_analysis, replace_vec_by_vordiv
@@ -176,20 +173,6 @@ module namelist_mod
   use fvm_mod, only: fvm_test_type, ideal_test_boomerang, ideal_test_solidbody
 #endif
 
-!=======================================================================================================!
-!    Adding for SW DG                                                                                   !
-!=======================================================================================================!
-#ifdef _SWDG
-  ! ------------------------
-  use dg_flux_mod, only: riemanntype
-  ! ------------------------
-  use dg_tests_mod, only : alpha_dg, alphatype
-  ! ------------------------
-  use dg_sweq_mod, only: stage_rk
-  ! ------------------------
-  use physical_constants, only: dd_pi
-  ! ------------------------
-#endif
 
 !=======================================================================================================!
   implicit none
@@ -282,7 +265,6 @@ module namelist_mod
                      tracer_advection_formulation, &
                      use_semi_lagrange_transport , &
                      tstep_type, &
-                     npdg, &
                      compute_mean_flux, &
                      cubed_sphere_map, &
                      qsplit, &
@@ -407,21 +389,6 @@ module namelist_mod
         interp_type,          &
         interpolate_analysis
 
-!=======================================================================================================!
-!   Adding for SW DG                                                                                    !
-!=======================================================================================================!
-#ifdef _SWDG
-    namelist /dg_nl/  &
-        riemanntype,  &
-        alphatype,    &
-        alpha_dg,     &
-        stage_rk
-!=======================================================================================================!
-    riemanntype= 0
-    alphatype= 0
-    alpha_dg = 0.0D0
-    stage_rk = 3
-#endif
 !=======================================================================================================!
     ! ==========================
     ! Set the default partmethod
@@ -552,7 +519,7 @@ module namelist_mod
           precon_method = "identity"
           maxits        = 100
           tol           = 1.0D-13
-          debug_level   = CG_NO_DEBUG
+          debug_level   = 0
 
           print *,'HYPERVIS order = ',hypervis_order
           if (hypervis_order /= 0) then
@@ -786,26 +753,6 @@ module namelist_mod
 
 
 !=======================================================================================================!
-!     Adding for SW DG                                                                                  !
-!=======================================================================================================!
-#ifdef _SWDG
-      write(iulog,*)"reading dg namelist..."
-#if defined(OSF1) || defined(_BGL) || defined(_NAMELIST_FROM_FILE)
-      read(unit=7,nml=dg_nl)
-#else
-      read(*,nml=dg_nl)
-#endif
-    if (alphatype==0) then
-       alpha_dg= 0.0D0
-    elseif (alphatype==1) then
-       alpha_dg= DD_PI
-    elseif (alphatype==2) then
-       alpha_dg= DD_PI/2.0D0
-    elseif (alphatype==4) then
-       alpha_dg= DD_PI/4.0D0
-    endif
-#endif
-!=======================================================================================================!
 
 #if defined(OSF1) || defined(_BGL) || defined(_NAMELIST_FROM_FILE)
        close(unit=7)
@@ -899,7 +846,6 @@ module namelist_mod
     call MPI_bcast(tracer_advection_formulation,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(use_semi_lagrange_transport ,1,MPIlogical_t,par%root,par%comm,ierr)
     call MPI_bcast(tstep_type,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(npdg,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(compute_mean_flux,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(cubed_sphere_map,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(qsplit,1,MPIinteger_t ,par%root,par%comm,ierr)
@@ -1122,17 +1068,6 @@ module namelist_mod
     end if
 
 !=======================================================================================================!
-!   Adding for SW DG                                                                                    !
-!=======================================================================================================!
-#ifndef CAM
-#ifdef _SWDG
-    call MPI_bcast(riemanntype,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(alphatype,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(alpha_dg,1,MPIreal_t,par%root,par%comm,ierr)
-    call MPI_bcast(stage_rk,1,MPIinteger_t,par%root,par%comm,ierr)
-#endif
-#endif
-!=======================================================================================================!
 #ifdef CAM
     nmpi_per_node=1
 #endif
@@ -1211,7 +1146,6 @@ module namelist_mod
 #endif
 
        write(iulog,*)"readnl: ne,np         = ",NE,np
-       if (npdg>0) write(iulog,*)"readnl: npdg       = ",npdg
        write(iulog,*)"readnl: partmethod    = ",PARTMETHOD
        write(iulog,*)'readnl: nmpi_per_node = ',nmpi_per_node
        write(iulog,*)'readnl: multilevel    = ',multilevel
@@ -1387,15 +1321,6 @@ module namelist_mod
           write(iulog,*)" analysis interp gridtype = ",interp_gridtype
           write(iulog,*)" analysis interpolation type = ",interp_type
        end if
-!=======================================================================================================!
-!      Adding for SW DG                                                                                 !
-!=======================================================================================================!
-#ifdef _SWDG
-       write(iulog,*)'dg: riemanntype=',riemanntype
-       write(iulog,*)'dg: alphatype=',alphatype
-       write(iulog,*)'dg: alpha    =',alpha_dg
-       write(iulog,*)'dg: staqge_rk=',stage_rk
-#endif
 !=======================================================================================================!
     endif
 

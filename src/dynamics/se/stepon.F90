@@ -19,7 +19,7 @@ module stepon
    use dyn_comp,       only: dyn_import_t, dyn_export_t
    use perf_mod,       only: t_startf, t_stopf, t_barrierf
 ! from SE
-   use derivative_mod, only : derivinit, deriv_print, derivative_t
+   use derivative_mod, only : derivinit, derivative_t
    use quadrature_mod, only : gauss, gausslobatto, quadrature_t
    use edgetype_mod,   only : EdgeBuffer_t
    use edge_mod,       only : initEdgeBuffer, FreeEdgeBuffer, &

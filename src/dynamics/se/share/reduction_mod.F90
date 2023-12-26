@@ -1,9 +1,9 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module reduction_mod
-  use kinds, only : real_kind
+  use shr_kind_mod,   only: r8=>shr_kind_r8
+  use spmd_utils,     only: mpi_sum, mpi_min, mpi_max, mpi_real8, mpi_integer
+  use spmd_utils,     only: mpi_success
+  use cam_abortutils, only: endrun
+
   implicit none
   private
 
@@ -14,30 +14,30 @@ module reduction_mod
   end type ReductionBuffer_int_1d_t
 
   type, public :: ReductionBuffer_r_1d_t
-     real (kind=real_kind), dimension(:), pointer :: buf
+     real (kind=r8), dimension(:), pointer :: buf
      integer :: len=0
      integer :: ctr
   end type ReductionBuffer_r_1d_t
 
   type, public :: ReductionBuffer_ordered_1d_t
-     real (kind=real_kind), dimension(:,:),pointer :: buf
+     real (kind=r8), dimension(:,:),pointer :: buf
      integer :: len=0
      integer :: ctr
   end type ReductionBuffer_ordered_1d_t
 
-  public :: ParallelMin,ParallelMax
+  public :: ParallelMin
+  public :: ParallelMax
 
-  !type (ReductionBuffer_ordered_1d_t), public :: red_sum
-  type (ReductionBuffer_int_1d_t),       public :: red_max_int
-  type (ReductionBuffer_int_1d_t),       public :: red_sum_int
-  type (ReductionBuffer_r_1d_t),       public :: red_sum
-  type (ReductionBuffer_r_1d_t),       public :: red_max,red_min
-  type (ReductionBuffer_r_1d_t),       public :: red_flops,red_timer
-
-  !JMD new addition
+  type (ReductionBuffer_int_1d_t), public :: red_max_int
+  type (ReductionBuffer_int_1d_t), public :: red_sum_int
+  type (ReductionBuffer_r_1d_t),   public :: red_flops,red_timer
+  type (ReductionBuffer_r_1d_t),   public :: red_max
+  type (ReductionBuffer_r_1d_t),   public :: red_min
+  type (ReductionBuffer_r_1d_t),   public :: red_sum
 #ifndef Darwin
-  SAVE red_sum,red_max,red_min,red_flops,red_timer,red_max_int,red_sum_int
+  SAVE red_max_int, red_sum_int, red_flops, red_max, red_min, red_sum, red_timer
 #endif
+
   interface ParallelMin
      module procedure ParallelMin1d
      module procedure ParallelMin0d
@@ -73,12 +73,12 @@ contains
 
   function ParallelMin1d(data,hybrid) result(pmin)
     use hybrid_mod, only : hybrid_t
-    implicit none
-    real(kind=real_kind), intent(in)    :: data(:)
-    type (hybrid_t),      intent(in)    :: hybrid
-    real(kind=real_kind)                :: pmin
 
-    real(kind=real_kind)                :: tmp(1)
+    real(kind=r8),   intent(in) :: data(:)
+    type (hybrid_t), intent(in) :: hybrid
+    real(kind=r8)               :: pmin
+
+    real(kind=r8)               :: tmp(1)
 
 
     tmp(1) = MINVAL(data)
@@ -90,10 +90,10 @@ contains
   function ParallelMin0d(data,hybrid) result(pmin)
     use hybrid_mod, only : hybrid_t
     implicit none
-    real(kind=real_kind), intent(in)    :: data
+    real(kind=r8), intent(in)    :: data
     type (hybrid_t),      intent(in)    :: hybrid
-    real(kind=real_kind)                :: pmin
-    real(kind=real_kind)                :: tmp(1)
+    real(kind=r8)                :: pmin
+    real(kind=r8)                :: tmp(1)
     tmp(1) = data
     call pmin_mt(red_min,tmp,1,hybrid)
     pmin = red_min%buf(1)
@@ -108,7 +108,7 @@ contains
     type (hybrid_t), intent(in)         :: hybrid
     integer, dimension(n,m)             :: pmax
     integer, dimension(n*m)             :: tmp
-    integer :: ierr,i,j
+    integer :: i,j
     do i=1,n 
       do j=1,m
         tmp(i+(j-1)*n) = data(i,j)
@@ -129,7 +129,6 @@ contains
     integer, intent(in), dimension(len) :: data
     type (hybrid_t), intent(in)         :: hybrid
     integer, dimension(len)             :: pmax, tmp
-    integer :: ierr
 
     tmp = data(:)
     call pmax_mt(red_max_int,tmp,len,hybrid)
@@ -139,11 +138,11 @@ contains
   function ParallelMax1d(data,hybrid) result(pmax)
     use hybrid_mod, only : hybrid_t
     implicit none
-    real(kind=real_kind), intent(in)    :: data(:)
+    real(kind=r8), intent(in)    :: data(:)
     type (hybrid_t),      intent(in)    :: hybrid
-    real(kind=real_kind)                :: pmax
+    real(kind=r8)                :: pmax
 
-    real(kind=real_kind)                :: tmp(1)
+    real(kind=r8)                :: tmp(1)
 
 
     tmp(1) = MAXVAL(data)
@@ -154,10 +153,10 @@ contains
   function ParallelMax0d(data,hybrid) result(pmax)
     use hybrid_mod, only : hybrid_t
     implicit none
-    real(kind=real_kind), intent(in)    :: data
+    real(kind=r8), intent(in)    :: data
     type (hybrid_t),      intent(in)    :: hybrid
-    real(kind=real_kind)                :: pmax
-    real(kind=real_kind)                :: tmp(1)
+    real(kind=r8)                :: pmax
+    real(kind=r8)                :: tmp(1)
 
     tmp(1)=data
 
@@ -181,13 +180,12 @@ contains
   end function ParallelMax0d_int
   !==================================================
   subroutine InitReductionBuffer_int_1d(red,len)
-    use parallel_mod, only: abortmp
     use thread_mod, only: omp_get_num_threads
     integer, intent(in)           :: len
     type (ReductionBuffer_int_1d_t),intent(out) :: red
 
     if (omp_get_num_threads()>1) then
-       call abortmp("Error: attempt to allocate reduction buffer in threaded region")
+       call endrun("Error: attempt to allocate reduction buffer in threaded region")
     endif
 
     ! if buffer is already allocated and large enough, do nothing
@@ -203,40 +201,38 @@ contains
   end subroutine InitReductionBuffer_int_1d
   !****************************************************************
   subroutine InitReductionBuffer_r_1d(red,len)
-    use parallel_mod, only: abortmp
     use thread_mod, only: omp_get_num_threads
     integer, intent(in)           :: len
     type (ReductionBuffer_r_1d_t),intent(out) :: red
 
     if (omp_get_num_threads()>1) then
-       call abortmp("Error: attempt to allocate reduction buffer in threaded region")
+       call endrun("Error: attempt to allocate reduction buffer in threaded region")
     endif
 
     if (len > red%len) then
        if (red%len>0) deallocate(red%buf)
        red%len  = len
        allocate(red%buf(len))
-       red%buf  = 0.0D0
+       red%buf  = 0.0_R8
        red%ctr  = 0
     endif
   end subroutine InitReductionBuffer_r_1d
   !****************************************************************
   subroutine InitReductionBuffer_ordered_1d(red,len,nthread)
-    use parallel_mod, only: abortmp
     use thread_mod, only: omp_get_num_threads
     integer, intent(in)           :: len
     integer, intent(in)           :: nthread
     type (ReductionBuffer_ordered_1d_t),intent(out) :: red
 
     if (omp_get_num_threads()>1) then
-       call abortmp("Error: attempt to allocate reduction buffer in threaded region")
+       call endrun("Error: attempt to allocate reduction buffer in threaded region")
     endif
 
     if (len > red%len) then
        if (red%len>0) deallocate(red%buf)
        red%len  = len
        allocate(red%buf(len,nthread+1))
-       red%buf  = 0.0D0
+       red%buf  = 0.0_R8
        red%ctr  = 0
     endif
   end subroutine InitReductionBuffer_ordered_1d
@@ -250,11 +246,6 @@ contains
 
   subroutine pmax_mt_int_1d(red,redp,len,hybrid)
     use hybrid_mod, only : hybrid_t
-#ifdef _MPI
-    use parallel_mod, only: mpi_min, mpi_max, mpiinteger_t,abortmp
-#else
-    use parallel_mod, only: abortmp
-#endif
 
     type (ReductionBuffer_int_1d_t)   :: red       ! shared memory reduction buffer struct
     integer,               intent(in) :: len       ! buffer length
@@ -267,13 +258,12 @@ contains
 #endif
 
     integer  :: k
-    if (len>red%len) call abortmp('ERROR: threadsafe reduction buffer too small')
+    if (len>red%len) then
+      call endrun('ERROR: threadsafe reduction buffer too small')
+    end if
 
-
-#if (defined HORIZ_OPENMP)
     !$OMP BARRIER
     !$OMP CRITICAL (CRITMAX)
-#endif
     if (red%ctr == 0) red%buf(1:len)= -9999
     if (red%ctr < hybrid%NThreads) then
        do k=1,len
@@ -282,38 +272,26 @@ contains
        red%ctr=red%ctr+1
     end if
     if (red%ctr == hybrid%NThreads) red%ctr=0
-#if (defined HORIZ_OPENMP)
     !$OMP END CRITICAL (CRITMAX)
-#endif
 #ifdef _MPI
-#if (defined HORIZ_OPENMP)
     !$OMP BARRIER
-#endif
     if (hybrid%ithr==0) then
 
-       call MPI_Allreduce(red%buf(1),redp,len,MPIinteger_t, &
+       call MPI_Allreduce(red%buf(1),redp,len,Mpi_integer, &
             MPI_MAX,hybrid%par%comm,ierr)
 
        red%buf(1:len)=redp(1:len)
     end if
 #endif
-#if (defined HORIZ_OPENMP)
     !$OMP BARRIER
-#endif
-
 
   end subroutine pmax_mt_int_1d
   
   subroutine pmax_mt_r_1d(red,redp,len,hybrid)
     use hybrid_mod, only : hybrid_t
-#ifdef _MPI
-    use parallel_mod, only: mpi_min, mpi_max, mpireal_t,abortmp
-#else
-    use parallel_mod, only: abortmp
-#endif
 
     type (ReductionBuffer_r_1d_t)     :: red     ! shared memory reduction buffer struct
-    real (kind=real_kind), intent(inout) :: redp(:) ! thread private vector of partial sum
+    real (kind=r8), intent(inout) :: redp(:) ! thread private vector of partial sum
     integer,               intent(in) :: len     ! buffer length
     type (hybrid_t),       intent(in) :: hybrid  ! parallel handle
 
@@ -323,13 +301,13 @@ contains
 #endif
 
     integer  :: k
-    if (len>red%len) call abortmp('ERROR: threadsafe reduction buffer too small')
+    if (len>red%len) then
+      call endrun('ERROR: threadsafe reduction buffer too small')
+    end if
 
-#if (defined HORIZ_OPENMP)
     !$OMP BARRIER
     !$OMP CRITICAL (CRITMAX)
-#endif
-    if (red%ctr == 0) red%buf(1:len)= -9.11e30
+    if (red%ctr == 0) red%buf(1:len)= -9.11e30_r8
     if (red%ctr < hybrid%NThreads) then
        do k=1,len
           red%buf(k)=MAX(red%buf(k),redp(k))
@@ -337,25 +315,18 @@ contains
        red%ctr=red%ctr+1
     end if
     if (red%ctr == hybrid%NThreads) red%ctr=0
-#if (defined HORIZ_OPENMP)
     !$OMP END CRITICAL (CRITMAX)
-#endif
 #ifdef _MPI
-#if (defined HORIZ_OPENMP)
     !$OMP BARRIER
-#endif
     if (hybrid%ithr==0) then
 
-       call MPI_Allreduce(red%buf(1),redp,len,MPIreal_t, &
+       call MPI_Allreduce(red%buf(1),redp,len,Mpi_real8, &
             MPI_MAX,hybrid%par%comm,ierr)
 
        red%buf(1:len)=redp(1:len)
     end if
 #endif
-#if (defined HORIZ_OPENMP)
     !$OMP BARRIER
-#endif
-
 
   end subroutine pmax_mt_r_1d
 
@@ -367,33 +338,27 @@ contains
   ! =======================================
 
   subroutine pmin_mt_r_1d(red,redp,len,hybrid)
-    use kinds, only : int_kind
     use hybrid_mod, only : hybrid_t
-#ifdef _MPI
-    use parallel_mod, only: mpi_min, mpireal_t,abortmp
-#else
-    use parallel_mod, only: abortmp
-#endif
 
     type (ReductionBuffer_r_1d_t)     :: red     ! shared memory reduction buffer struct
-    real (kind=real_kind), intent(inout) :: redp(:) ! thread private vector of partial sum
+    real (kind=r8), intent(inout) :: redp(:) ! thread private vector of partial sum
     integer,               intent(in) :: len     ! buffer length
     type (hybrid_t),       intent(in) :: hybrid  ! parallel handle
 
     ! Local variables
 
 #ifdef _MPI
-    integer ierr
+    integer :: ierr
 #endif
-    integer (kind=int_kind) :: k
+    integer :: k
 
-    if (len>red%len) call abortmp('ERROR: threadsafe reduction buffer too small')
+    if (len>red%len) then
+      call endrun('ERROR: threadsafe reduction buffer too small')
+    end if
 
-#if (defined HORIZ_OPENMP)
     !$OMP BARRIER
     !$OMP CRITICAL (CRITMAX)
-#endif
-    if (red%ctr == 0) red%buf(1:len)= 9.11e30
+    if (red%ctr == 0) red%buf(1:len)= 9.11e30_r8
     if (red%ctr < hybrid%NThreads) then
        do k=1,len
           red%buf(k)=MIN(red%buf(k),redp(k))
@@ -401,45 +366,33 @@ contains
        red%ctr=red%ctr+1
     end if
     if (red%ctr == hybrid%NThreads) red%ctr=0
-#if (defined HORIZ_OPENMP)
     !$OMP END CRITICAL (CRITMAX)
-#endif
 #ifdef _MPI
-#if (defined HORIZ_OPENMP)
     !$OMP BARRIER
-#endif
     if (hybrid%ithr==0) then
 
-       call MPI_Allreduce(red%buf(1),redp,len,MPIreal_t, &
+       call MPI_Allreduce(red%buf(1),redp,len,Mpi_real8, &
             MPI_MIN,hybrid%par%comm,ierr)
 
        red%buf(1:len)=redp(1:len)
     end if
 #endif
-#if (defined HORIZ_OPENMP)
     !$OMP BARRIER
-#endif
-
 
   end subroutine pmin_mt_r_1d
 
   subroutine ElementSum_1d(res,variable,type,hybrid)
-    use hybrid_mod, only : hybrid_t
-    use dimensions_mod, only : nelem
-#ifdef _MPI
-  use parallel_mod, only : ORDERED, mpireal_t, mpi_min, mpi_max, mpi_sum, mpi_success
-#else
-  use parallel_mod, only : ORDERED
-#endif
-    implicit none
+    use hybrid_mod,     only: hybrid_t
+    use dimensions_mod, only: nelem
+    use parallel_mod,   only: ORDERED
 
     ! ==========================
     !     Arguments
     ! ==========================
-    real(kind=real_kind),intent(out) :: res
-    real(kind=real_kind),intent(in)  :: variable(:)
-    integer,intent(in)               :: type
-    type (hybrid_t), intent(in)      :: hybrid 
+    real(kind=r8),   intent(out) :: res
+    real(kind=r8),   intent(in)  :: variable(:)
+    integer,         intent(in)  :: type
+    type (hybrid_t), intent(in)  :: hybrid 
 
     ! ==========================
     !       Local Variables
@@ -450,80 +403,28 @@ contains
     !  arrays of size other then nelem
     !
 
-    integer                          :: i
-#if 0
-    real(kind=real_kind),allocatable :: Global(:)
-    real(kind=real_kind),allocatable :: buffer(:)
-#endif
-
 #ifdef _MPI
-    integer                           :: errorcode,errorlen
-    character*(80) errorstring
+    integer           :: errorcode,errorlen
+    character(len=80) :: errorstring
 
-    real(kind=real_kind)             :: local_sum
-    integer                          :: ierr
+    real(kind=r8)     :: local_sum
+    integer           :: ierr
+#else
+    integer           :: i
 #endif
 
 #ifdef _MPI
     if(hybrid%ithr == 0) then 
-#if 0
-       if(type == ORDERED) then
-          allocate(buffer(nelem))
-          call MPI_Gatherv(variable,nelemd,MPIreal_t,buffer, &
-               recvcount,displs,MPIreal_t,hybrid%par%root, &
-               hybrid%par%comm,ierr)
-          if(ierr .ne. MPI_SUCCESS) then 
-             errorcode=ierr
-             call MPI_Error_String(errorcode,errorstring,errorlen,ierr)
-             print *,'ElementSum_1d: Error after call to MPI_Gatherv: ',errorstring
-          endif
-
-          if(hybrid%par%masterproc) then
-             allocate(Global(nelem))
-             do ip=1,hybrid%par%nprocs
-                nelemr = recvcount(ip)
-                disp   = displs(ip)
-                do ie=1,nelemr
-                   ig = Schedule(ip)%Local2Global(ie)
-                   Global(ig) = buffer(disp+ie)
-                enddo
-             enddo
-             ! ===========================
-             !  Perform the ordererd sum
-             ! ===========================
-             res = 0.0d0
-             do i=1,nelem
-                res = res + Global(i)
-             enddo
-             deallocate(Global)
-          endif
-          ! =============================================
-          !  Broadcast the results back everybody
-          ! =============================================
-          call MPI_Bcast(res,1,MPIreal_t,hybrid%par%root, &
-               hybrid%par%comm,ierr)
-          if(ierr .ne. MPI_SUCCESS) then 
-             errorcode=ierr
-             call MPI_Error_String(errorcode,errorstring,errorlen,ierr)
-             print *,'ElementSum_1d: Error after call to MPI_Bcast: ',errorstring
-          endif
-
-          deallocate(buffer)
-       else
-#endif
           local_sum=SUM(variable)
           call MPI_Barrier(hybrid%par%comm,ierr)
 
-          call MPI_Allreduce(local_sum,res,1,MPIreal_t, &
+          call MPI_Allreduce(local_sum,res,1,Mpi_real8, &
                MPI_SUM,hybrid%par%comm,ierr)
           if(ierr .ne. MPI_SUCCESS) then 
              errorcode=ierr
              call MPI_Error_String(errorcode,errorstring,errorlen,ierr)
              print *,'ElementSum_1d: Error after call to MPI_Allreduce: ',errorstring
           endif
-#if 0
-       endif
-#endif
     endif
 #else
     if(hybrid%ithr == 0) then 
@@ -531,7 +432,7 @@ contains
           ! ===========================
           !  Perform the ordererd sum
           ! ===========================
-          res = 0.0d0
+          res = 0.0_r8
           do i=1,nelem
              res = res + variable(i)
           enddo

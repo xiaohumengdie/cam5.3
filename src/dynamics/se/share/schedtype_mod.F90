@@ -1,6 +1,6 @@
 module schedtype_mod
 
-    use metagraph_mod, only : MetaEdge_t
+  use metagraph_mod, only : MetaEdge_t
 
   implicit none
   private
@@ -32,8 +32,8 @@ module schedtype_mod
      integer                     :: placeholder  ! total integer count should be even
      integer                     :: nSendCycles
      integer                     :: nRecvCycles
-     integer                     :: nInter        ! number of off-node or inter node communication cycles
-     integer                     :: nIntra        ! number of on-node or intra node communication cycles
+     integer                     :: nInter       ! number of off-node or inter node communication cycles
+     integer                     :: nIntra       ! number of on-node or intra node communication cycles
      integer                     :: padding
      integer,pointer             :: Local2Global(:)
      integer,pointer             :: destFull(:)

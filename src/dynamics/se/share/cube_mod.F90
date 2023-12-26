@@ -2,20 +2,15 @@
 #include "config.h"
 #endif
 
-#define _BEGIN_FACE 1
-#define _END_FACE   4
-#undef _FACE_6
-#undef _FACE_5
-
 module cube_mod
-  use kinds, only : real_kind, long_kind, longdouble_kind
-  use coordinate_systems_mod, only : spherical_polar_t, cartesian3D_t, cartesian2d_t, &
+  use shr_kind_mod,           only: r8=>shr_kind_r8
+  use coordinate_systems_mod, only: spherical_polar_t, cartesian3D_t, cartesian2d_t, &
        projectpoint, cubedsphere2cart, spherical_to_cart, sphere_tri_area,dist_threshold, &
        change_coordinates
 
-  use physical_constants, only : dd_pi, rearth
-  use control_mod, only : hypervis_scaling, cubed_sphere_map
-  use parallel_mod, only : abortmp
+  use physconst,              only: pi, rearth
+  use control_mod,            only: hypervis_scaling, cubed_sphere_map
+  use cam_abortutils,         only: endrun
 
   implicit none
   private
@@ -24,10 +19,10 @@ module cube_mod
   integer,public, parameter :: nInnerElemEdge = 8  ! number of edges for an interior element
   integer,public, parameter :: nCornerElemEdge = 4 ! number of corner elements
 
-  real(kind=real_kind), public, parameter :: cube_xstart = -0.25D0*DD_PI
-  real(kind=real_kind), public, parameter :: cube_xend   =  0.25D0*DD_PI
-  real(kind=real_kind), public, parameter :: cube_ystart = -0.25D0*DD_PI
-  real(kind=real_kind), public, parameter :: cube_yend   =  0.25D0*DD_PI
+  real(kind=r8), public, parameter :: cube_xstart = -0.25_R8*PI
+  real(kind=r8), public, parameter :: cube_xend   =  0.25_R8*PI
+  real(kind=r8), public, parameter :: cube_ystart = -0.25_R8*PI
+  real(kind=r8), public, parameter :: cube_yend   =  0.25_R8*PI
 
 
   type, public :: face_t
@@ -44,8 +39,8 @@ module cube_mod
   end type face_t
 
   type, public :: cube_face_coord_t
-     real(real_kind) :: x             ! x coordinate
-     real(real_kind) :: y             ! y coordinate
+     real(r8) :: x             ! x coordinate
+     real(r8) :: y             ! y coordinate
      type (face_t), pointer :: face     ! face
   end type cube_face_coord_t
 
@@ -56,9 +51,9 @@ module cube_mod
   public :: CubeTopology
 
   ! Rotate the North Pole:  used for JW baroclinic test case
-  ! Settings this only changes Coriolis.  
+  ! Settings this only changes Coriolis.
   ! User must also rotate initial condition
-  real (kind=real_kind), public :: rotate_grid = 0
+  real (kind=r8), public :: rotate_grid = 0
 
   ! ===============================
   ! Public methods for cube
@@ -66,7 +61,6 @@ module cube_mod
 
   public  :: cube_init_atomic
   public  :: convert_gbl_index
-  public  :: cube_assemble
   public  :: vmap,dmap
   public  :: covariant_rot
   public  :: contravariant_rot
@@ -80,20 +74,6 @@ module cube_mod
   public  :: rotation_init_atomic
   public  :: ref2sphere
 
-  ! public interface to REFERECE element map
-#if HOMME_QUAD_PREC
-  interface ref2sphere
-     module procedure ref2sphere_double
-     module procedure ref2sphere_longdouble
-  end interface
-#else
-  ! both routines have identical arguments in this case, cant use interface
-  interface ref2sphere
-     module procedure ref2sphere_double
-  end interface
-#endif
-
-
   ! ===============================
   ! Private methods
   ! ===============================
@@ -106,28 +86,32 @@ contains
   ! =======================================
   !  cube_init_atomic:
   !
-  ! Initialize element descriptors for 
-  ! cube sphere case for each element ... 
+  ! Initialize element descriptors for
+  ! cube sphere case for each element ...
   ! =======================================
-  subroutine cube_init_atomic(elem,gll_points,alpha_in)
+  subroutine cube_init_atomic(elem, gll_points, alpha_in)
     use element_mod, only : element_t
     use dimensions_mod, only : np
-    type (element_t),intent(inout) :: elem
-    real (kind=real_kind),optional :: alpha_in
-    real (kind=real_kind)          :: alpha=1
-    real (kind=longdouble_kind)      :: gll_points(np)
 
-    if(present(alpha_in)) alpha=alpha_in
-    
+    type (element_t),   intent(inout) :: elem
+    real(r8),           intent(in)    :: gll_points(np)
+    real(r8), optional, intent(in)    :: alpha_in
+
+    real(r8)                          :: alpha
+
+    if (present(alpha_in)) then
+      alpha = alpha_in
+    else
+      alpha = 1.0_r8
+    end if
+
     elem%FaceNum=elem%vertex%face_number
     call coordinates_atomic(elem,gll_points)
 
-    call metric_atomic(elem,gll_points,alpha)
+    call metric_atomic(elem, gll_points, alpha)
 
     call coreolis_init_atomic(elem)
     elem%desc%use_rotation= 0
-!    call solver_weights_atomic(elem)
-
 
   end subroutine cube_init_atomic
 
@@ -135,20 +119,20 @@ contains
   ! coordinates_atomic:
   !
   ! Initialize element coordinates for
-  ! cube-sphere case ... (atomic) 
+  ! cube-sphere case ... (atomic)
   !
   ! =======================================
 
-  subroutine coordinates_atomic(elem,gll_points)
-    use element_mod, only : element_t, element_var_coordinates
-    use dimensions_mod, only : np
-    type (element_t) :: elem
-    real (kind=longdouble_kind)      :: gll_points(np)
+  subroutine coordinates_atomic(elem, gll_points)
+    use element_mod,    only: element_t, element_var_coordinates
+    use dimensions_mod, only: np
 
+    type(element_t), intent(inout) :: elem
+    real(r8),        intent(in)    :: gll_points(np)
 
-    real (kind=real_kind)      :: area1,area2
+    real(r8)             :: area1,area2
     type (cartesian3d_t) :: quad(4)
-    integer face_no,i,j
+    integer              :: face_no,i,j
 
     face_no = elem%vertex%face_number
     ! compute the corners in Cartesian coordinates
@@ -172,7 +156,7 @@ contains
     ! Zonal direction
     elem%vec_sphere2cart(:,:,1,1) = -SIN(elem%spherep(:,:)%lon)
     elem%vec_sphere2cart(:,:,2,1) =  COS(elem%spherep(:,:)%lon)
-    elem%vec_sphere2cart(:,:,3,1) =  0.0_real_kind
+    elem%vec_sphere2cart(:,:,3,1) =  0.0_r8
     ! Meridional direction
     elem%vec_sphere2cart(:,:,1,2) = -SIN(elem%spherep(:,:)%lat)*COS(elem%spherep(:,:)%lon)
     elem%vec_sphere2cart(:,:,2,2) = -SIN(elem%spherep(:,:)%lat)*SIN(elem%spherep(:,:)%lon)
@@ -192,17 +176,17 @@ contains
     use dimensions_mod, only : np
     type (cartesian2D_t),  dimension(np,np), intent(in) :: coords
     ! unif2quadmap is the bilinear map from [-1,1]^2 -> arbitrary quadrilateral
-    real (kind=real_kind), dimension(4,2), intent(out) :: unif2quadmap
+    real (kind=r8), dimension(4,2), intent(out) :: unif2quadmap
     integer :: ii,jj
 
-    unif2quadmap(1,1)=(coords(1,1)%x+coords(np,1)%x+coords(np,np)%x+coords(1,np)%x)/4.0d0
-    unif2quadmap(1,2)=(coords(1,1)%y+coords(np,1)%y+coords(np,np)%y+coords(1,np)%y)/4.0d0
-    unif2quadmap(2,1)=(-coords(1,1)%x+coords(np,1)%x+coords(np,np)%x-coords(1,np)%x)/4.0d0
-    unif2quadmap(2,2)=(-coords(1,1)%y+coords(np,1)%y+coords(np,np)%y-coords(1,np)%y)/4.0d0
-    unif2quadmap(3,1)=(-coords(1,1)%x-coords(np,1)%x+coords(np,np)%x+coords(1,np)%x)/4.0d0
-    unif2quadmap(3,2)=(-coords(1,1)%y-coords(np,1)%y+coords(np,np)%y+coords(1,np)%y)/4.0d0
-    unif2quadmap(4,1)=(coords(1,1)%x-coords(np,1)%x+coords(np,np)%x-coords(1,np)%x)/4.0d0
-    unif2quadmap(4,2)=(coords(1,1)%y-coords(np,1)%y+coords(np,np)%y-coords(1,np)%y)/4.0d0
+    unif2quadmap(1,1)=(coords(1,1)%x+coords(np,1)%x+coords(np,np)%x+coords(1,np)%x)/4.0_r8
+    unif2quadmap(1,2)=(coords(1,1)%y+coords(np,1)%y+coords(np,np)%y+coords(1,np)%y)/4.0_r8
+    unif2quadmap(2,1)=(-coords(1,1)%x+coords(np,1)%x+coords(np,np)%x-coords(1,np)%x)/4.0_r8
+    unif2quadmap(2,2)=(-coords(1,1)%y+coords(np,1)%y+coords(np,np)%y-coords(1,np)%y)/4.0_r8
+    unif2quadmap(3,1)=(-coords(1,1)%x-coords(np,1)%x+coords(np,np)%x+coords(1,np)%x)/4.0_r8
+    unif2quadmap(3,2)=(-coords(1,1)%y-coords(np,1)%y+coords(np,np)%y+coords(1,np)%y)/4.0_r8
+    unif2quadmap(4,1)=(coords(1,1)%x-coords(np,1)%x+coords(np,np)%x-coords(1,np)%x)/4.0_r8
+    unif2quadmap(4,2)=(coords(1,1)%y-coords(np,1)%y+coords(np,np)%y-coords(1,np)%y)/4.0_r8
 
   end subroutine elem_jacobians
 
@@ -211,64 +195,65 @@ contains
   !
   ! Initialize cube-sphere metric terms:
   ! equal angular elements (atomic)
-  ! initialize:  
+  ! initialize:
   !         metdet, rmetdet  (analytic)    = detD, 1/detD
   !         met                (analytic)    D^t D     (symmetric)
   !         metdet             (analytic)    = detD
   !         metinv             (analytic)    Dinv Dinv^t  (symmetic)
   !         D     (from subroutine vmap)
   !         Dinv  (computed directly from D)
-  ! 
-  ! ucontra = Dinv * u  =  metinv * ucov   
+  !
+  ! ucontra = Dinv * u  =  metinv * ucov
   ! ucov    = D^t * u   =  met * ucontra
   !
-  ! we also compute DE = D*E, where 
+  ! we also compute DE = D*E, where
   ! E = eigenvectors of metinv as a basis      metinv = E LAMBDA E^t
-  !   
-  ! ueig = E^t ucov  = E^t D^t u =  (DE)^t u  
-  !  
+  !
+  ! ueig = E^t ucov  = E^t D^t u =  (DE)^t u
+  !
   !
   ! so if we want to tweak the mapping by a factor alpha (so he weights add up to 4pi, for example)
   ! we take:
-  !    NEW       OLD     
-  !       D = sqrt(alpha) D  and then rederive all quantities.  
+  !    NEW       OLD
+  !       D = sqrt(alpha) D  and then rederive all quantities.
   !    detD = alpha detD
-  !    
+  !
   ! where alpha = 4pi/SEMarea, SEMarea = global sum elem(ie)%mv(i,j)*elem(ie)%metdet(i,j)
-  ! 
+  !
   ! =========================================
 
   subroutine metric_atomic(elem,gll_points,alpha)
-    use element_mod, only : element_t
-    use dimensions_mod, only : np
-    use physical_constants, only : rrearth
+    use element_mod,    only: element_t
+    use dimensions_mod, only: np
+    use physconst,      only: ra
 
-    type (element_t) :: elem
-    real(kind=real_kind) :: alpha
-    real (kind=longdouble_kind)      :: gll_points(np)
+    type (element_t), intent(inout) :: elem
+    real(r8),         intent(in)    :: alpha
+    real(r8),         intent(in)    :: gll_points(np)
+
     ! Local variables
     integer ii
     integer i,j,nn
     integer iptr
 
-    real (kind=real_kind) :: r         ! distance from origin for point on cube tangent to unit sphere
+    real (kind=r8) :: r         ! distance from origin for point on cube tangent to unit sphere
 
-    real (kind=real_kind) :: const, norm
-    real (kind=real_kind) :: detD      ! determinant of vector field mapping matrix.  
+    real (kind=r8) :: const, norm
+    real (kind=r8) :: detD      ! determinant of vector field mapping matrix.
 
-    real (kind=real_kind) :: x1        ! 1st cube face coordinate
-    real (kind=real_kind) :: x2        ! 2nd cube face coordinate
-    real (kind=real_kind) :: tmpD(2,2)
-    real (kind=real_kind) :: M(2,2),E(2,2),eig(2),DE(2,2),DEL(2,2),V(2,2), nu1, nu2, lamStar1, lamStar2
+    real (kind=r8) :: x1        ! 1st cube face coordinate
+    real (kind=r8) :: x2        ! 2nd cube face coordinate
+    real (kind=r8) :: tmpD(2,2)
+    real (kind=r8) :: M(2,2),E(2,2),eig(2),DE(2,2),DEL(2,2),V(2,2), nu1, nu2, lamStar1, lamStar2
     integer :: imaxM(2)
-    real (kind=real_kind) :: l1, l2, sc,min_svd,max_svd,max_normDinv
+    real (kind=r8) :: l1, l2, sc,min_svd,max_svd,max_normDinv
 
-    
+
     ! ==============================================
     ! Initialize differential mapping operator
-    ! to and from vector fields on the sphere to 
+    ! to and from vector fields on the sphere to
     ! contravariant vector fields on the cube
-    ! i.e. dM/dx^i in Sadourney (1972) and it's 
+    ! i.e. dM/dx^i in Sadourney (1972) and it's
     ! inverse
     ! ==============================================
 
@@ -277,8 +262,8 @@ contains
        call elem_jacobians(elem%cartp, elem%u2qmap)
     endif
 
-    max_svd = 0.0d0
-    max_normDinv = 0.0d0
+    max_svd = 0.0_r8
+    max_normDinv = 0.0_r8
     min_svd = 1d99
     do j=1,np
        do i=1,np
@@ -301,7 +286,7 @@ contains
           ! compute D^-1...
           ! compute determinant of D mapping matrix... if not zero compute inverse
 
-          detD = elem%D(i,j,1,1)*elem%D(i,j,2,2) - elem%D(i,j,1,2)*elem%D(i,j,2,1)      
+          detD = elem%D(i,j,1,1)*elem%D(i,j,2,2) - elem%D(i,j,1,2)*elem%D(i,j,2,1)
 
           elem%Dinv(i,j,1,1) =  elem%D(i,j,2,2)/detD
           elem%Dinv(i,j,1,2) = -elem%D(i,j,1,2)/detD
@@ -312,17 +297,17 @@ contains
           !         = 1/sqrt(min eigenvalue of met)
           ! l1 and l2 are eigenvalues of met
           ! (should both be positive, l1 > l2)
-          l1 = (elem%met(i,j,1,1) + elem%met(i,j,2,2) + sqrt(4.0d0*elem%met(i,j,1,2)*elem%met(i,j,2,1) + &
-              (elem%met(i,j,1,1) - elem%met(i,j,2,2))**2))/2.0d0
-          l2 = (elem%met(i,j,1,1) + elem%met(i,j,2,2) - sqrt(4.0d0*elem%met(i,j,1,2)*elem%met(i,j,2,1) + &
-              (elem%met(i,j,1,1) - elem%met(i,j,2,2))**2))/2.0d0
+          l1 = (elem%met(i,j,1,1) + elem%met(i,j,2,2) + sqrt(4.0_r8*elem%met(i,j,1,2)*elem%met(i,j,2,1) + &
+              (elem%met(i,j,1,1) - elem%met(i,j,2,2))**2))/2.0_r8
+          l2 = (elem%met(i,j,1,1) + elem%met(i,j,2,2) - sqrt(4.0_r8*elem%met(i,j,1,2)*elem%met(i,j,2,1) + &
+              (elem%met(i,j,1,1) - elem%met(i,j,2,2))**2))/2.0_r8
           ! Max L2 norm of Dinv is sqrt of max eigenvalue of metinv
           ! max eigenvalue of metinv is 1/min eigenvalue of met
-          norm = 1.0d0/sqrt(min(abs(l1),abs(l2)))
+          norm = 1.0_r8/sqrt(min(abs(l1),abs(l2)))
           max_svd = max(norm, max_svd)
           ! Min L2 norm of Dinv is sqrt of min eigenvalue of metinv
           ! min eigenvalue of metinv is 1/max eigenvalue of met
-          norm = 1.0d0/sqrt(max(abs(l1),abs(l2)))
+          norm = 1.0_r8/sqrt(max(abs(l1),abs(l2)))
           min_svd = min(norm, min_svd)
 
           ! some kind of pseudo-norm of Dinv
@@ -339,7 +324,7 @@ contains
 
           ! Need inverse of met if not calculated analytically
           elem%metdet(i,j) = abs(detD)
-          elem%rmetdet(i,j) = 1.0D0/abs(detD)
+          elem%rmetdet(i,j) = 1.0_R8/abs(detD)
 
           elem%metinv(i,j,1,1) =  elem%met(i,j,2,2)/(detD*detD)
           elem%metinv(i,j,1,2) = -elem%met(i,j,1,2)/(detD*detD)
@@ -350,11 +335,11 @@ contains
           ! compute eigenvectors of metinv (probably same as computed above)
           M = elem%metinv(i,j,:,:)
 
-          eig(1) = (M(1,1) + M(2,2) + sqrt(4.0d0*M(1,2)*M(2,1) + &
-              (M(1,1) - M(2,2))**2))/2.0d0
-          eig(2) = (M(1,1) + M(2,2) - sqrt(4.0d0*M(1,2)*M(2,1) + &
-              (M(1,1) - M(2,2))**2))/2.0d0
-          
+          eig(1) = (M(1,1) + M(2,2) + sqrt(4.0_r8*M(1,2)*M(2,1) + &
+              (M(1,1) - M(2,2))**2))/2.0_r8
+          eig(2) = (M(1,1) + M(2,2) - sqrt(4.0_r8*M(1,2)*M(2,1) + &
+              (M(1,1) - M(2,2))**2))/2.0_r8
+
           ! use DE to store M - Lambda, to compute eigenvectors
           DE=M
           DE(1,1)=DE(1,1)-eig(1)
@@ -372,7 +357,7 @@ contains
           else   if ( imaxM(1)==2 .and. imaxM(2)==2 ) then
              E(1,1)=1; E(2,1) = -DE(1,2)/DE(2,2)
           else
-             call abortmp('Impossible error in cube_mod.F90::metric_atomic()')
+             call endrun('Impossible error in cube_mod.F90::metric_atomic()')
           endif
 
           ! the other eigenvector is orthgonal:
@@ -380,15 +365,15 @@ contains
           E(2,2)= E(1,1)
 
 !normalize columns
-	  E(:,1)=E(:,1)/sqrt(sum(E(:,1)*E(:,1))); 
-	  E(:,2)=E(:,2)/sqrt(sum(E(:,2)*E(:,2))); 
+      E(:,1)=E(:,1)/sqrt(sum(E(:,1)*E(:,1)));
+      E(:,2)=E(:,2)/sqrt(sum(E(:,2)*E(:,2)));
 
 
 ! OBTAINING TENSOR FOR HV:
 
 ! Instead of the traditional scalar Laplace operator \grad \cdot \grad
 ! we introduce \grad \cdot V \grad
-! where V = D E LAM LAM^* E^T D^T. 
+! where V = D E LAM LAM^* E^T D^T.
 ! Recall (metric_tensor)^{-1}=(D^T D)^{-1} = E LAM E^T.
 ! Here, LAM = diag( 4/((np-1)dx)^2 , 4/((np-1)dy)^2 ) = diag(  4/(dx_elem)^2, 4/(dy_elem)^2 )
 ! Note that metric tensors and LAM correspondingly are quantities on a unit sphere.
@@ -398,8 +383,8 @@ contains
 ! (Halves in powers come from the fact that HV consists of two Laplace iterations.)
 
 ! Originally, we took LAM^* = diag(
-!  1/(eig(1)**(hypervis_scaling/4.0d0))*(rearth**(hypervis_scaling/2.0d0))
-!  1/(eig(2)**(hypervis_scaling/4.0d0))*(rearth**(hypervis_scaling/2.0d0)) ) = 
+!  1/(eig(1)**(hypervis_scaling/4.0_r8))*(rearth**(hypervis_scaling/2.0_r8))
+!  1/(eig(2)**(hypervis_scaling/4.0_r8))*(rearth**(hypervis_scaling/2.0_r8)) ) =
 !  = diag( lamStar1, lamStar2)
 !  \simeq ((np-1)*dx_sphere / 2 )^hv_scaling/2 = SQRT(OPERATOR_HV)
 ! because 1/eig(...) \simeq (dx_on_unit_sphere)^2 .
@@ -420,16 +405,16 @@ contains
 
 ! (2) Later developments:
 ! Bringing [nu_tensor] to 1/[sec]:
-!	  lamStar1=1/(eig(1)**(hypervis_scaling/4.0d0)) *(rearth**2.0d0)
-!	  lamStar2=1/(eig(2)**(hypervis_scaling/4.0d0)) *(rearth**2.0d0)
+!     lamStar1=1/(eig(1)**(hypervis_scaling/4.0_r8)) *(rearth**2.0_r8)
+!     lamStar2=1/(eig(2)**(hypervis_scaling/4.0_r8)) *(rearth**2.0_r8)
 ! OPERATOR_HV = ( (np-1)*dx_unif_sphere / 2 )^{hv_scaling} * rearth^4
 ! Conversion formula:
 ! nu_tensor = nu_const * OPERATOR_HV^{-1}, so
 ! nu_tensor = nu_const *( 2*rearth /((np-1)*dx))^{hv_scaling} * rearth^{-4.0}.
 
-! For the baseline coefficient nu=1e15 for NE30, 
+! For the baseline coefficient nu=1e15 for NE30,
 ! nu_tensor=7e-8 (BUT RUN TWICE AS SMALL VALUE FOR NOW) for hv_scaling=3.2
-! and 
+! and
 ! nu_tensor=1.3e-6 for hv_scaling=4.0.
 
 
@@ -439,8 +424,8 @@ contains
           DE(2,1)=sum(elem%D(i,j,2,:)*E(:,1))
           DE(2,2)=sum(elem%D(i,j,2,:)*E(:,2))
 
-	  lamStar1=1/(eig(1)**(hypervis_scaling/4.0d0)) *(rearth**2.0d0)
-	  lamStar2=1/(eig(2)**(hypervis_scaling/4.0d0)) *(rearth**2.0d0)
+      lamStar1=1/(eig(1)**(hypervis_scaling/4.0_r8)) *(rearth**2.0_r8)
+      lamStar2=1/(eig(2)**(hypervis_scaling/4.0_r8)) *(rearth**2.0_r8)
 
 !matrix (DE) * Lam^* * Lam , tensor HV when V is applied at each Laplace calculation
 !          DEL(1:2,1) = lamStar1*eig(1)*DE(1:2,1)
@@ -451,33 +436,33 @@ contains
           DEL(1:2,1) = (lamStar1**2) *eig(1)*DE(1:2,1)
           DEL(1:2,2) = (lamStar2**2) *eig(2)*DE(1:2,2)
 
-!matrix (DE) * Lam^* * Lam  *E^t *D^t or (DE) * (Lam^*)^2 * Lam  *E^t *D^t 
+!matrix (DE) * Lam^* * Lam  *E^t *D^t or (DE) * (Lam^*)^2 * Lam  *E^t *D^t
           V(1,1)=sum(DEL(1,:)*DE(1,:))
           V(1,2)=sum(DEL(1,:)*DE(2,:))
           V(2,1)=sum(DEL(2,:)*DE(1,:))
           V(2,2)=sum(DEL(2,:)*DE(2,:))
 
-	  elem%tensorVisc(i,j,:,:)=V(:,:)
+      elem%tensorVisc(i,j,:,:)=V(:,:)
 
        end do
     end do
 
-!    see Paul Ullrich writeup:   
+!    see Paul Ullrich writeup:
 !    max_normDinv might be a tighter bound than max_svd for deformed elements
-!    max_svd >= max_normDinv/sqrt(2), with equality holding if |g^x| = |g^y| 
-!    elem%normDinv=max_normDinv/sqrt(2)     
+!    max_svd >= max_normDinv/sqrt(2), with equality holding if |g^x| = |g^y|
+!    elem%normDinv=max_normDinv/sqrt(2)
 
     ! this norm is consistent with length scales defined below:
     elem%normDinv=max_svd
 
 
     ! compute element length scales, based on SVDs, in km:
-    elem%dx_short = 1.0d0/(max_svd*0.5d0*dble(np-1)*rrearth*1000.0d0)
-    elem%dx_long  = 1.0d0/(min_svd*0.5d0*dble(np-1)*rrearth*1000.0d0)
+    elem%dx_short = 1.0_r8/(max_svd*0.5_r8*dble(np-1)*ra*1000.0_r8)
+    elem%dx_long  = 1.0_r8/(min_svd*0.5_r8*dble(np-1)*ra*1000.0_r8)
 
     ! optional noramlization:
-    elem%D = elem%D * sqrt(alpha) 
-    elem%Dinv = elem%Dinv / sqrt(alpha) 
+    elem%D = elem%D * sqrt(alpha)
+    elem%Dinv = elem%Dinv / sqrt(alpha)
     elem%metdet = elem%metdet * alpha
     elem%rmetdet = elem%rmetdet / alpha
     elem%met = elem%met * alpha
@@ -496,11 +481,11 @@ contains
 
   function covariant_rot(Da,Db) result(R)
 
-    real (kind=real_kind) :: Da(2,2)
-    real (kind=real_kind) :: Db(2,2)
-    real (kind=real_kind) :: R(2,2)
+    real (kind=r8) :: Da(2,2)
+    real (kind=r8) :: Db(2,2)
+    real (kind=r8) :: R(2,2)
 
-    real (kind=real_kind) :: detDa
+    real (kind=r8) :: detDa
 
     detDa = Da(2,2)*Da(1,1) - Da(1,2)*Da(2,1)
 
@@ -516,18 +501,18 @@ contains
   !
   ! 2 x 2 matrix multiply:  Db^-1 * Da
   ! that maps a contravariant vector field
-  ! from an edge of cube face a to a contiguous 
+  ! from an edge of cube face a to a contiguous
   ! edge of cube face b.
   !
   ! ========================================
 
   function contravariant_rot(Da,Db) result(R)
 
-    real (kind=real_kind) :: Da(2,2)
-    real (kind=real_kind) :: Db(2,2)
-    real (kind=real_kind) :: R(2,2)
+    real(kind=r8), intent(in) :: Da(2,2)
+    real(kind=r8), intent(in) :: Db(2,2)
+    real(kind=r8)             :: R(2,2)
 
-    real (kind=real_kind) :: detDb
+    real(kind=r8)             :: detDb
 
     detDb = Db(2,2)*Db(1,1) - Db(1,2)*Db(2,1)
 
@@ -541,32 +526,32 @@ contains
   ! ========================================================
   ! Dmap:
   !
-  ! Initialize mapping that tranforms contravariant 
+  ! Initialize mapping that tranforms contravariant
   ! vector fields on the reference element onto vector fields on
-  ! the sphere. 
+  ! the sphere.
   ! ========================================================
   subroutine Dmap(D, a,b, corners3D, ref_map, corners, u2qmap, facenum)
-    real (kind=real_kind), intent(out)  :: D(2,2)
-    real (kind=real_kind), intent(in)     :: a,b
+    real (kind=r8), intent(out)  :: D(2,2)
+    real (kind=r8), intent(in)     :: a,b
     type (cartesian3D_t)   :: corners3D(4)  !x,y,z coords of element corners
-    integer :: ref_map 
+    integer :: ref_map
     ! only needed for ref_map=0,1
     type (cartesian2D_t),optional   :: corners(4)    ! gnomonic coords of element corners
-    real (kind=real_kind),optional  :: u2qmap(4,2)   
+    real (kind=r8),optional  :: u2qmap(4,2)
     integer,optional  :: facenum
 
 
 
     if (ref_map==0) then
        if (.not. present ( corners ) ) &
-            call abortmp('Dmap(): missing arguments for equiangular map')
+            call endrun('Dmap(): missing arguments for equiangular map')
        call dmap_equiangular(D,a,b,corners,u2qmap,facenum)
     else if (ref_map==1) then
-       call abortmp('equi-distance gnomonic map not yet implemented')
+       call endrun('equi-distance gnomonic map not yet implemented')
     else if (ref_map==2) then
        call dmap_elementlocal(D,a,b,corners3D)
     else
-       call abortmp('bad value of ref_map')
+       call endrun('bad value of ref_map')
     endif
   end subroutine Dmap
 
@@ -581,27 +566,27 @@ contains
   ! ========================================================
   subroutine dmap_equiangular(D, a,b, corners,u2qmap,facenum )
     use dimensions_mod, only : np
-    real (kind=real_kind), intent(out)  :: D(2,2)
-    real (kind=real_kind), intent(in)     :: a,b
-    real (kind=real_kind)    :: u2qmap(4,2)   
+    real (kind=r8), intent(out)  :: D(2,2)
+    real (kind=r8), intent(in)     :: a,b
+    real (kind=r8)    :: u2qmap(4,2)
     type (cartesian2D_t)     :: corners(4)                          ! gnomonic coords of element corners
     integer :: facenum
     ! local
-    real (kind=real_kind)  :: tmpD(2,2), Jp(2,2),x1,x2,pi,pj,qi,qj
-    real (kind=real_kind), dimension(4,2) :: unif2quadmap
+    real (kind=r8)  :: tmpD(2,2), Jp(2,2),x1,x2,pi,pj,qi,qj
+    real (kind=r8), dimension(4,2) :: unif2quadmap
 
 #if 0
     ! we shoud get rid of elem%u2qmap() and routine cube_mod.F90::elem_jacobian()
     ! and replace with this code below:
     ! but this produces roundoff level changes
-    !unif2quadmap(1,1)=(elem%cartp(1,1)%x+elem%cartp(np,1)%x+elem%cartp(np,np)%x+elem%cartp(1,np)%x)/4.0d0
-    !unif2quadmap(1,2)=(elem%cartp(1,1)%y+elem%cartp(np,1)%y+elem%cartp(np,np)%y+elem%cartp(1,np)%y)/4.0d0
-    unif2quadmap(2,1)=(-elem%cartp(1,1)%x+elem%cartp(np,1)%x+elem%cartp(np,np)%x-elem%cartp(1,np)%x)/4.0d0
-    unif2quadmap(2,2)=(-elem%cartp(1,1)%y+elem%cartp(np,1)%y+elem%cartp(np,np)%y-elem%cartp(1,np)%y)/4.0d0
-    unif2quadmap(3,1)=(-elem%cartp(1,1)%x-elem%cartp(np,1)%x+elem%cartp(np,np)%x+elem%cartp(1,np)%x)/4.0d0
-    unif2quadmap(3,2)=(-elem%cartp(1,1)%y-elem%cartp(np,1)%y+elem%cartp(np,np)%y+elem%cartp(1,np)%y)/4.0d0
-    unif2quadmap(4,1)=(elem%cartp(1,1)%x-elem%cartp(np,1)%x+elem%cartp(np,np)%x-elem%cartp(1,np)%x)/4.0d0
-    unif2quadmap(4,2)=(elem%cartp(1,1)%y-elem%cartp(np,1)%y+elem%cartp(np,np)%y-elem%cartp(1,np)%y)/4.0d0
+    !unif2quadmap(1,1)=(elem%cartp(1,1)%x+elem%cartp(np,1)%x+elem%cartp(np,np)%x+elem%cartp(1,np)%x)/4.0_r8
+    !unif2quadmap(1,2)=(elem%cartp(1,1)%y+elem%cartp(np,1)%y+elem%cartp(np,np)%y+elem%cartp(1,np)%y)/4.0_r8
+    unif2quadmap(2,1)=(-elem%cartp(1,1)%x+elem%cartp(np,1)%x+elem%cartp(np,np)%x-elem%cartp(1,np)%x)/4.0_r8
+    unif2quadmap(2,2)=(-elem%cartp(1,1)%y+elem%cartp(np,1)%y+elem%cartp(np,np)%y-elem%cartp(1,np)%y)/4.0_r8
+    unif2quadmap(3,1)=(-elem%cartp(1,1)%x-elem%cartp(np,1)%x+elem%cartp(np,np)%x+elem%cartp(1,np)%x)/4.0_r8
+    unif2quadmap(3,2)=(-elem%cartp(1,1)%y-elem%cartp(np,1)%y+elem%cartp(np,np)%y+elem%cartp(1,np)%y)/4.0_r8
+    unif2quadmap(4,1)=(elem%cartp(1,1)%x-elem%cartp(np,1)%x+elem%cartp(np,np)%x-elem%cartp(1,np)%x)/4.0_r8
+    unif2quadmap(4,2)=(elem%cartp(1,1)%y-elem%cartp(np,1)%y+elem%cartp(np,np)%y-elem%cartp(1,np)%y)/4.0_r8
     Jp(1,1) = unif2quadmap(2,1) + unif2quadmap(4,1)*b
     Jp(1,2) = unif2quadmap(3,1) + unif2quadmap(4,1)*a
     Jp(2,1) = unif2quadmap(2,2) + unif2quadmap(4,2)*b
@@ -625,13 +610,13 @@ contains
     x1 = pi*pj*corners(1)%x &
          + qi*pj*corners(2)%x &
          + qi*qj*corners(3)%x &
-         + pi*qj*corners(4)%x 
+         + pi*qj*corners(4)%x
     x2 = pi*pj*corners(1)%y &
          + qi*pj*corners(2)%y &
          + qi*qj*corners(3)%y &
-         + pi*qj*corners(4)%y 
-    
-    call vmap(tmpD,x1,x2,facenum) 
+         + pi*qj*corners(4)%y
+
+    call vmap(tmpD,x1,x2,facenum)
 
     ! Include map from element -> ref element in D
     D(1,1) = tmpD(1,1)*Jp(1,1) + tmpD(1,2)*Jp(2,1)
@@ -645,9 +630,9 @@ contains
   ! ========================================================
   ! vmap:
   !
-  ! Initialize mapping that tranforms contravariant 
+  ! Initialize mapping that tranforms contravariant
   ! vector fields on the cube onto vector fields on
-  ! the sphere. This follows Taylor's D matrix 
+  ! the sphere. This follows Taylor's D matrix
   !
   !       | cos(theta)dlambda/dx1  cos(theta)dlambda/dx2 |
   !   D = |                                              |
@@ -655,30 +640,31 @@ contains
   !
   ! ========================================================
 
-  subroutine vmap(D, x1, x2, face_no) 
-    real (kind=real_kind), intent(inout)  :: D(2,2)
-    real (kind=real_kind), intent(in)     :: x1
-    real (kind=real_kind), intent(in)     :: x2
-    integer              , intent(in)     :: face_no
+  subroutine vmap(D, x1, x2, face_no)
+    real(kind=r8), intent(inout) :: D(2,2)
+    real(kind=r8), intent(in)    :: x1
+    real(kind=r8), intent(in)    :: x2
+    integer,       intent(in)    :: face_no
 
     ! Local variables
 
-    real (kind=real_kind) :: poledist  ! SQRT(TAN(x1)**2 +TAN(x2)**2)
-    real (kind=real_kind) :: r         ! distance from cube point to center of sphere
+    real (kind=r8)    :: poledist ! SQRT(TAN(x1)**2 +TAN(x2)**2)
+    real (kind=r8)    :: r        ! distance from cube point to center of sphere
 
-    real (kind=real_kind) :: D11
-    real (kind=real_kind) :: D12
-    real (kind=real_kind) :: D21
-    real (kind=real_kind) :: D22
+    real (kind=r8)    :: D11
+    real (kind=r8)    :: D12
+    real (kind=r8)    :: D21
+    real (kind=r8)    :: D22
+    character(len=64) :: errmsg
 
-    r=SQRT(1.0D0 + TAN(x1)**2 + TAN(x2)**2)
+    r = SQRT(1.0_r8 + TAN(x1)**2 + TAN(x2)**2)
 
     if (face_no >= 1 .and. face_no <= 4) then
 
-       D11 = 1.0D0/(r*COS(x1))
-       D12 = 0.0D0
-       D21 = -TAN(x1)*TAN(x2)/(COS(x1)*r*r)        
-       D22 = 1.0D0/(r*r*COS(x1)*COS(x2)*COS(x2))
+       D11 = 1.0_r8 / (r * COS(x1))
+       D12 = 0.0_r8
+       D21 = -TAN(x1)*TAN(x2) / (COS(x1)*r*r)
+       D22 = 1.0_r8 / (r*r*COS(x1)*COS(x2)*COS(x2))
 
        D(1,1) =  D11
        D(1,2) =  D12
@@ -686,18 +672,18 @@ contains
        D(2,2) =  D22
 
 
-    else if (face_no==6) then
-       poledist=SQRT( TAN(x1)**2 + TAN(x2)**2)
-       if ( poledist <= DIST_THRESHOLD ) then
+    else if (face_no == 6) then
+       poledist = SQRT( TAN(x1)**2 + TAN(x2)**2)
+       if (poledist <= DIST_THRESHOLD) then
 
-          ! we set the D transform to the identity matrix 
-          ! which works ONLY for swtc1, phi starting at 
+          ! we set the D transform to the identity matrix
+          ! which works ONLY for swtc1, phi starting at
           ! 3*PI/2... assumes lon at pole == 0
 
-          D(1,1) =  1.0D0
-          D(1,2) =  0.0D0
-          D(2,1) =  0.0D0
-          D(2,2) =  1.0D0
+          D(1,1) =  1.0_r8
+          D(1,2) =  0.0_r8
+          D(2,1) =  0.0_r8
+          D(2,2) =  1.0_r8
 
        else
 
@@ -712,18 +698,18 @@ contains
           D(2,2) =  D22
 
        end if
-    else if (face_no==5) then
-       poledist=SQRT( TAN(x1)**2 + TAN(x2)**2)
-       if ( poledist <= DIST_THRESHOLD ) then
+    else if (face_no == 5) then
+       poledist = SQRT( TAN(x1)**2 + TAN(x2)**2)
+       if (poledist <= DIST_THRESHOLD) then
 
-          ! we set the D transform to the identity matrix 
-          ! which works ONLY for swtc1, phi starting at 
+          ! we set the D transform to the identity matrix
+          ! which works ONLY for swtc1, phi starting at
           ! 3*PI/2... assumes lon at pole == 0, i.e. very specific
 
-          D(1,1) =  1.0D0
-          D(1,2) =  0.0D0
-          D(2,1) =  0.0D0
-          D(2,2) =  1.0D0
+          D(1,1) =  1.0_r8
+          D(1,2) =  0.0_r8
+          D(2,1) =  0.0_r8
+          D(2,2) =  1.0_r8
 
        else
 
@@ -748,9 +734,9 @@ contains
   ! ========================================================
   ! Dmap:
   !
-  ! Initialize mapping that tranforms contravariant 
+  ! Initialize mapping that tranforms contravariant
   ! vector fields on the reference element onto vector fields on
-  ! the sphere. 
+  ! the sphere.
   ! For Gnomonic, followed by bilinear, this code uses the old vmap()
   ! for unstructured grids, this code uses the parametric map that
   ! maps quads on the sphere directly to the reference element
@@ -759,26 +745,26 @@ contains
     use element_mod, only : element_t
 
     type (element_t) :: elem
-    real (kind=real_kind), intent(out)    :: D(2,2)
-    real (kind=real_kind), intent(in)     :: a,b
-    type (cartesian3d_t)               ::  corners3D(4)   
+    real (kind=r8), intent(out)    :: D(2,2)
+    real (kind=r8), intent(in)     :: a,b
+    type (cartesian3d_t)               ::  corners3D(4)
 
     type (spherical_polar_t)      :: sphere
 
-    real(kind=real_kind)               ::  c(3,4), q(4), xx(3), r, lam, th, dd(4,2)
-    real(kind=real_kind)               ::  sinlam, sinth, coslam, costh
-    real(kind=real_kind)               ::  D1(2,3), D2(3,3), D3(3,2), D4(3,2)
+    real(kind=r8)               ::  c(3,4), q(4), xx(3), r, lam, th, dd(4,2)
+    real(kind=r8)               ::  sinlam, sinth, coslam, costh
+    real(kind=r8)               ::  D1(2,3), D2(3,3), D3(3,2), D4(3,2)
     integer :: i,j
 
     sphere = ref2sphere(a,b,corners3D,2) ! use element local map, ref_map=2
 
-    c(1,1)=corners3D(1)%x;  c(2,1)=corners3D(1)%y;  c(3,1)=corners3D(1)%z; 
-    c(1,2)=corners3D(2)%x;  c(2,2)=corners3D(2)%y;  c(3,2)=corners3D(2)%z; 
-    c(1,3)=corners3D(3)%x;  c(2,3)=corners3D(3)%y;  c(3,3)=corners3D(3)%z; 
-    c(1,4)=corners3D(4)%x;  c(2,4)=corners3D(4)%y;  c(3,4)=corners3D(4)%z; 
+    c(1,1)=corners3D(1)%x;  c(2,1)=corners3D(1)%y;  c(3,1)=corners3D(1)%z;
+    c(1,2)=corners3D(2)%x;  c(2,2)=corners3D(2)%y;  c(3,2)=corners3D(2)%z;
+    c(1,3)=corners3D(3)%x;  c(2,3)=corners3D(3)%y;  c(3,3)=corners3D(3)%z;
+    c(1,4)=corners3D(4)%x;  c(2,4)=corners3D(4)%y;  c(3,4)=corners3D(4)%z;
 
     q(1)=(1-a)*(1-b); q(2)=(1+a)*(1-b); q(3)=(1+a)*(1+b); q(4)=(1-a)*(1+b);
-    q=q/4.0d0;
+    q=q/4.0_r8;
 
     do i=1,3
       xx(i)=sum(c(i,:)*q(:))
@@ -790,8 +776,8 @@ contains
     sinlam=sin(lam); sinth=sin(th);
     coslam=cos(lam); costh=cos(th);
 
-    D1(1,1)=-sinlam; D1(1,2)=coslam; D1(1,3)=0.0d0; 
-    D1(2,1)=0.0d0;  D1(2,2)=0.0d0;    D1(2,3)=1.0d0;
+    D1(1,1)=-sinlam; D1(1,2)=coslam; D1(1,3)=0.0_r8;
+    D1(2,1)=0.0_r8;  D1(2,2)=0.0_r8;    D1(2,3)=1.0_r8;
 
     D2(1,1)=(sinlam**2)*(costh**2)+sinth**2; D2(1,2)=-sinlam*coslam*(costh**2); D2(1,3)=-coslam*sinth*costh;
     D2(2,1)=-sinlam*coslam*(costh**2); D2(2,2)=(coslam**2)*(costh**2)+sinth**2; D2(2,3)=-sinlam*sinth*costh;
@@ -802,23 +788,23 @@ contains
     dd(3,1)=1+b; dd(3,2)=1+a;
     dd(4,1)=-1-b; dd(4,2)=1-a;
 
-    dd=dd/4.0d0
+    dd=dd/4.0_r8
 
     do i=1,3
       do j=1,2
-	D3(i,j)=sum(c(i,:)*dd(:,j))
+    D3(i,j)=sum(c(i,:)*dd(:,j))
       enddo
     enddo
 
     do i=1,3
       do j=1,2
-	D4(i,j)=sum(D2(i,:)*D3(:,j))
+    D4(i,j)=sum(D2(i,:)*D3(:,j))
       enddo
-    enddo   
+    enddo
 
     do i=1,2
       do j=1,2
-	D(i,j)=sum(D1(i,:)*D4(:,j))
+    D(i,j)=sum(D1(i,:)*D4(:,j))
       enddo
     enddo
 
@@ -837,27 +823,27 @@ contains
   ! ========================================
 
   subroutine coreolis_init_atomic(elem)
-    use element_mod, only : element_t
-    use dimensions_mod, only : np
-    use physical_constants, only : omega
+    use element_mod,    only: element_t
+    use dimensions_mod, only: np
+    use physconst,      only: omega
 
     type (element_t) :: elem
 
     ! Local variables
 
     integer                  :: i,j
-    real (kind=real_kind) :: lat,lon,rangle
+    real (kind=r8) :: lat,lon,rangle
 
-    rangle = rotate_grid*DD_PI/180
+    rangle = rotate_grid * PI / 180._r8
     do j=1,np
        do i=1,np
              if ( rotate_grid /= 0) then
                 lat = elem%spherep(i,j)%lat
                 lon = elem%spherep(i,j)%lon
-             	elem%fcor(i,j)= 2*omega* &
+                elem%fcor(i,j)= 2*omega* &
                      (-cos(lon)*cos(lat)*sin(rangle) + sin(lat)*cos(rangle))
              else
-                elem%fcor(i,j) = 2.0D0*omega*SIN(elem%spherep(i,j)%lat)
+                elem%fcor(i,j) = 2.0_r8*omega*SIN(elem%spherep(i,j)%lat)
              endif
        end do
     end do
@@ -893,9 +879,9 @@ contains
     integer :: ir,jr
     integer :: start, cnt
 
-    real (kind=real_kind) :: Dloc(2,2,np)
-    real (kind=real_kind) :: Drem(2,2,np)
-    real (kind=real_kind) :: x1,x2
+    real (kind=r8) :: Dloc(2,2,np)
+    real (kind=r8) :: Drem(2,2,np)
+    real (kind=r8) :: x1,x2
 
 
     myface_no = elem%vertex%face_number
@@ -903,8 +889,8 @@ contains
     nrot   = 0
 
     do inbr=1,8
-        cnt = elem%vertex%nbrs_ptr(inbr+1) -  elem%vertex%nbrs_ptr(inbr) 
-        start =  elem%vertex%nbrs_ptr(inbr) 
+        cnt = elem%vertex%nbrs_ptr(inbr+1) -  elem%vertex%nbrs_ptr(inbr)
+        start =  elem%vertex%nbrs_ptr(inbr)
 
         do k = 0, cnt-1
            nbrface_no = elem%vertex%nbrs_face(start+k)
@@ -921,43 +907,43 @@ contains
     end if
 
     ! =====================================================
-    ! If there are neighbors on other cube faces, allocate 
+    ! If there are neighbors on other cube faces, allocate
     ! an array of rotation matrix structs.
     ! =====================================================
 
     if (nrot > 0) then
        allocate(elem%desc%rot(nrot))
        elem%desc%use_rotation=1
-       irot=0          
+       irot=0
 
        do inbr=1,8
-          cnt = elem%vertex%nbrs_ptr(inbr+1) -  elem%vertex%nbrs_ptr(inbr) 
-          start =  elem%vertex%nbrs_ptr(inbr) 
+          cnt = elem%vertex%nbrs_ptr(inbr+1) -  elem%vertex%nbrs_ptr(inbr)
+          start =  elem%vertex%nbrs_ptr(inbr)
 
           do k= 0, cnt-1
 
              nbrface_no = elem%vertex%nbrs_face(start+k)
-             ! The cube edge (myface_no,nbrface_no) and inbr defines 
+             ! The cube edge (myface_no,nbrface_no) and inbr defines
              ! a unique rotation given by (D^-1) on myface_no x (D) on nbrface_no
 
-             if (myface_no /= nbrface_no .and. elem%vertex%nbrs(start+k) /= -1 ) then           
+             if (myface_no /= nbrface_no .and. elem%vertex%nbrs(start+k) /= -1 ) then
                 irot=irot+1
 
-                if (inbr <= 4) then      
+                if (inbr <= 4) then
                    allocate(elem%desc%rot(irot)%R(2,2,np))  ! edge
-                else                     
+                else
                    allocate(elem%desc%rot(irot)%R(2,2,1 ))   ! corner
                 end if
 
-                ! must compute Dloc on my face, Drem on neighbor face, 
+                ! must compute Dloc on my face, Drem on neighbor face,
                 ! for each point on edge or corner.
-                
-                ! ==================================== 
+
+                ! ====================================
                 ! Equatorial belt east/west neighbors
-                ! ==================================== 
-                
+                ! ====================================
+
                 if (nbrface_no <= 4 .and. myface_no <= 4) then
-                   
+
                    if (inbr == west) then
                       do j=1,np
                          x1 = elem%cartp(1,j)%x
@@ -993,11 +979,11 @@ contains
                       call Vmap(Dloc(1,1,1), x1,x2,myface_no)
                       call Vmap(Drem(1,1,1),-x1,x2,nbrface_no)
                    end if
-                   
+
                 end if
-                
+
                 ! Northern Neighbors of Equatorial Belt
-                
+
                 if ( myface_no <= 4 .and. nbrface_no == 6 ) then
                    if (inbr == north) then
                       do i=1,np
@@ -1011,7 +997,7 @@ contains
                          if ( myface_no == 2) then
                             call Vmap(Dloc(1,1,i),x1,x2,myface_no)
                             call Vmap(Drem(1,1,i),x2,x1,nbrface_no)
-                            
+
                          end if
                          if ( myface_no == 3) then
                             call Vmap(Dloc(1,1,ir), x1,x2,myface_no)
@@ -1039,11 +1025,11 @@ contains
                       if ( myface_no == 3) call Vmap(Drem(1,1,1),-x1,x2,nbrface_no)
                       if ( myface_no == 4) call Vmap(Drem(1,1,1),-x2,-x1,nbrface_no)
                    end if
-                   
+
                 end if
-                
+
                 ! Southern Neighbors of Equatorial Belt
-                
+
                 if ( myface_no <= 4 .and. nbrface_no == 5 ) then
                    if (inbr == south) then
                       do i=1,np
@@ -1071,13 +1057,13 @@ contains
                       x1 = elem%cartp(1,1)%x
                       x2 = elem%cartp(1,1)%y
                       call Vmap(Dloc(1,1,1),x1,x2,myface_no)
-                      
-                      
+
+
                       if ( myface_no == 1) call Vmap(Drem(1,1,1),x1,-x2,nbrface_no)
                       if ( myface_no == 2) call Vmap(Drem(1,1,1),-x2,-x1,nbrface_no)
                       if ( myface_no == 3) call Vmap(Drem(1,1,1),-x1,x2,nbrface_no)
                       if ( myface_no == 4) call Vmap(Drem(1,1,1),x2,x1,nbrface_no)
-                      
+
                    else if (inbr == seast) then
                       x1 = elem%cartp(np,1)%x
                       x2 = elem%cartp(np,1)%y
@@ -1087,11 +1073,11 @@ contains
                       if ( myface_no == 3) call Vmap(Drem(1,1,1),-x1,x2,nbrface_no)
                       if ( myface_no == 4) call Vmap(Drem(1,1,1),x2,x1,nbrface_no)
                    end if
-                   
+
                 end if
-                
+
                 ! Neighbors of Northern Capping Face Number 6
-                
+
                 if ( myface_no == 6 ) then
                    if (nbrface_no == 1) then
                       if (inbr == south) then
@@ -1173,7 +1159,7 @@ contains
                       end if
                    end if
                 end if
-                
+
                 ! Neighbors of South Capping Face Number 5
 
                 if ( myface_no == 5 ) then
@@ -1257,7 +1243,7 @@ contains
                       end if
                    end if
                 end if
-                
+
                 elem%desc%rot(irot)%nbr = inbr
                 if (rot_type == "covariant") then
                    do i=1,SIZE(elem%desc%rot(irot)%R(:,:,:),3)
@@ -1268,26 +1254,26 @@ contains
                       elem%desc%rot(irot)%R(:,:,i)=contravariant_rot(Dloc(:,:,i),Drem(:,:,i))
                    end do
                 end if
-                
-             endif ! end of a unique rotation
+
+             end if ! end of a unique rotation
           end do !k loop over neighbors in that direction
        end do !inbr loop
     end if !nrot > 0
-    
+
   end subroutine rotation_init_atomic
-  
+
 
   subroutine set_corner_coordinates(elem)
-    use element_mod,    only : element_t 
+    use element_mod,    only : element_t
     use dimensions_mod, only : ne
- 
-    type (element_t) :: elem 
+
+    type (element_t) :: elem
 
     ! Local variables
     integer  i,ie,je,face_no,nn
-    real (kind=real_kind)  :: dx,dy, startx, starty
+    real (kind=r8)  :: dx,dy, startx, starty
 
-    if (0==ne) call abortmp('Error in set_corner_coordinates: ne is zero')
+    if (0==ne) call endrun('Error in set_corner_coordinates: ne is zero')
 
     ! ========================================
     ! compute cube face coordinates of element
@@ -1295,7 +1281,7 @@ contains
 
     call convert_gbl_index(elem%vertex%number,ie,je,face_no)
 
-    elem%vertex%face_number = face_no 
+    elem%vertex%face_number = face_no
     dx = (cube_xend-cube_xstart)/ne
     dy = (cube_yend-cube_ystart)/ne
 
@@ -1308,24 +1294,24 @@ contains
     elem%corners(2)%y = starty
     elem%corners(3)%x = startx+dx
     elem%corners(3)%y = starty+dy
-    elem%corners(4)%x = startx   
+    elem%corners(4)%x = startx
     elem%corners(4)%y = starty+dy
 
 #if 0
     do i=1,4
        elem%node_multiplicity(i) = 4
-    end do  
+    end do
     ie = ie + 1
     je = je + 1
-    if      (ie ==  1 .and. je ==  1) then 
+    if      (ie ==  1 .and. je ==  1) then
        elem%node_multiplicity(1) = 3
-    else if (ie == ne .and. je ==  1) then 
+    else if (ie == ne .and. je ==  1) then
        elem%node_multiplicity(2) = 3
     else if (ie == ne .and. je == ne) then
        elem%node_multiplicity(3) = 3
     else if (ie ==  1 .and. je == ne) then
        elem%node_multiplicity(4) = 3
-    end if  
+    end if
 #endif
   end subroutine set_corner_coordinates
 
@@ -1349,17 +1335,17 @@ contains
     current_node_num = 0
     tot_ne = 6*ne*ne
 
-    if (0==ne)      call abortmp('Error in assign_node_numbers_to_elem: ne is zero')
-    if (tot_ne /= SIZE(GridVertex)) call abortmp('Error in assign_node_numbers_to_elem: GridVertex not correct length')
+    if (0==ne)      call endrun('Error in assign_node_numbers_to_elem: ne is zero')
+    if (tot_ne /= SIZE(GridVertex)) call endrun('Error in assign_node_numbers_to_elem: GridVertex not correct length')
 
-    connectivity = 0 
+    connectivity = 0
 
-    do el = 1,tot_ne  
+    do el = 1,tot_ne
        vertex = GridVertex(el)
-       en = 0 
+       en = 0
        do direction = 1,8
-          cnt = vertex%nbrs_ptr(direction+1) -  vertex%nbrs_ptr(direction) 
-          start =  vertex%nbrs_ptr(direction) 
+          cnt = vertex%nbrs_ptr(direction+1) -  vertex%nbrs_ptr(direction)
+          start =  vertex%nbrs_ptr(direction)
 
           do i=0, cnt-1
              n = vertex%nbrs(start+i)
@@ -1401,7 +1387,7 @@ contains
     end do
 
     if (current_node_num /= (6*ne*ne+2)) then
-       call abortmp('Error in assignment of node numbers: Failed Euler test')
+       call endrun('Error in assignment of node numbers: Failed Euler test')
     end if
 !    do el = 1,SIZE(elements)
 !      elements(el)%node_numbers = connectivity(elements(el)%vertex%number, :)
@@ -1420,7 +1406,7 @@ contains
     integer, intent(in)  :: number
     integer, intent(out) :: ie,je,face_no
 
-    if (0==ne) call abortmp('Error in cube_mod:convert_gbl_index: ne is zero')
+    if (0==ne) call endrun('Error in cube_mod:convert_gbl_index: ne is zero')
 
     !  inverse of the function:      number = 1 + ie + ne*je + ne*ne*(face_no-1)
     face_no=((number-1)/(ne*ne))+1
@@ -1428,15 +1414,14 @@ contains
     je=(number-1)/ne - (face_no-1)*ne
 
   end subroutine convert_gbl_index
-   
+
   subroutine CubeTopology(GridEdge, GridVertex)
-    use gridgraph_mod, only : GridEdge_t, GridVertex_t, initgridedge, PrintGridEdge, &
-         allocate_gridvertex_nbrs, deallocate_gridvertex_nbrs 
-    use dimensions_mod, only : np, ne
-    use spacecurve_mod, only :  IsFactorable, genspacecurve
-    use control_mod, only : north, south, east, west, neast, seast, swest, nwest
+    use gridgraph_mod,  only: GridEdge_t, GridVertex_t, initgridedge
+    use gridgraph_mod,  only: allocate_gridvertex_nbrs, deallocate_gridvertex_nbrs
+    use dimensions_mod, only: np, ne
+    use spacecurve_mod, only: IsFactorable, genspacecurve
+    use control_mod,    only: north, south, east, west, neast, seast, swest, nwest
     !-----------------------
-    implicit none
 
     ! Since GridVertex fields must be allocated before calling this, it
     ! must be intent(inout).
@@ -1454,9 +1439,9 @@ contains
     integer                   :: ielem, nedge
     integer                   :: offset, ierr, loc
     logical, allocatable      :: nbrs_used(:,:,:,:)
-    
 
-    if (0==ne) call abortmp('Error in CubeTopology: ne is zero')
+
+    if (0==ne) call endrun('Error in CubeTopology: ne is zero')
 
     allocate(GridElem(ne,ne,nfaces),stat=ierr)
     do k = 1, nfaces
@@ -1468,7 +1453,7 @@ contains
     end do
 
     if(ierr/=0) then
-       call abortmp('error in allocation of GridElem structure')
+       call endrun('error in allocation of GridElem structure')
     end if
 
     allocate(nbrs_used(ne,ne,nfaces,8))
@@ -1489,24 +1474,22 @@ contains
              GridElem(i,j,k)%nbrs_ptr(:)=0
              GridElem(i,j,k)%nbrs_wgt_ghost(:)=1  ! always this value
              GridElem(i,j,k)%SpaceCurve=0
-             GridElem(i,j,k)%number=number 
+             GridElem(i,j,k)%number=number
              number=number+1
 
           end do
        end do
     end do
-    
-
-    !    print *,'CubeTopology: Ne, IsFactorable, IsLoadBalanced : ',ne,IsFactorable(ne),IsLoadBalanced(nelem,npart)
 
     allocate(Mesh(ne,ne))
     if(IsFactorable(ne)) then
        call GenspaceCurve(Mesh)
-       !      call PrintCurve(Mesh) 
     else
        ! find the smallest ne2 which is a power of 2 and ne2>ne
-       ne2=2**ceiling( log(real(ne))/log(2d0) )
-       if (ne2<ne) call abortmp('Fatel SFC error')
+       ne2 = 2**ceiling(log(real(ne)) / log(2.0_r8))
+       if (ne2 < ne) then
+         call endrun('Fatal SFC error')
+       end if
 
        allocate(Mesh2(ne2,ne2))
        allocate(Mesh2_map(ne2,ne2,2))
@@ -1523,8 +1506,8 @@ contains
           do i=1,ne
              ! map this element to an (i2,j2) element
              ! [ (i-.5)/ne , (j-.5)/ne ]  = [ (i2-.5)/ne2 , (j2-.5)/ne2 ]
-             i2=nint( ((i-.5)/ne)*ne2 + .5 )
-             j2=nint( ((j-.5)/ne)*ne2 + .5 )
+             i2=nint( ((i-0.5_r8)/ne)*ne2 + 0.5_r8 )
+             j2=nint( ((j-0.5_r8)/ne)*ne2 + 0.5_r8 )
              if (i2<1) i2=1
              if (i2>ne2) i2=ne2
              if (j2<1) j2=1
@@ -1535,8 +1518,8 @@ contains
        enddo
 
        ! create a reverse index array for Mesh2
-       ! k = Mesh2(i,j) 
-       ! (i,j) = (sfcij(k,1),sfci(k,2)) 
+       ! k = Mesh2(i,j)
+       ! (i,j) = (sfcij(k,1),sfci(k,2))
        do j=1,ne2
           do i=1,ne2
              k=Mesh2(i,j)
@@ -1545,7 +1528,7 @@ contains
           enddo
        enddo
 
-       ! generate a SFC for Mesh with the same ordering as the 
+       ! generate a SFC for Mesh with the same ordering as the
        ! elements in Mesh2 which map to Mesh.
        sfc_index=0
        do k=0,ne2*ne2-1
@@ -1559,18 +1542,11 @@ contains
              sfc_index=sfc_index+1
           endif
        enddo
-#if 0
-       print *,'SFC Mapping to non powers of 2,3 used.  Mesh:'  
-       do j=1,ne
-          write(*,'(99i3)') (Mesh(i,j),i=1,ne)
-       enddo
-       call PrintCurve(Mesh2) 
-#endif
+
        deallocate(Mesh2)
        deallocate(Mesh2_map)
        deallocate(sfcij)
     endif
-
 
     ! -------------------------------------------
     !  Setup the space-filling curve for face 1
@@ -1663,7 +1639,7 @@ contains
              nbrs_used(i,j,k,east) = .true.
              nbrs_used(i,j,k,north) = .true.
              nbrs_used(i,j,k,neast) = .true.
-             
+
              GridElem(i,j,k)%nbrs(east)   = GridElem(i+1,j,k)%number
              GridElem(i,j,k)%nbrs_face(east)   = k
              GridElem(i,j,k)%nbrs_wgt(east)        = EdgeWgtP
@@ -1682,9 +1658,9 @@ contains
              nbrs_used(i,j,k,south) = .true.
              nbrs_used(i,j,k,east) = .true.
              nbrs_used(i,j,k,seast) = .true.
-             
-             
-             
+
+
+
              GridElem(i,j,k)%nbrs(south)  = GridElem(i,j-1,k)%number
              GridElem(i,j,k)%nbrs_face(south)  = k
              GridElem(i,j,k)%nbrs_wgt(south)       = EdgeWgtP
@@ -1703,9 +1679,9 @@ contains
              nbrs_used(i,j,k,north) = .true.
              nbrs_used(i,j,k,west) = .true.
              nbrs_used(i,j,k,nwest) = .true.
-             
-             
-             
+
+
+
              GridElem(i,j,k)%nbrs(north)  = GridElem(i,j+1,k)%number
              GridElem(i,j,k)%nbrs_face(north)  = k
              GridElem(i,j,k)%nbrs_wgt(north)       = EdgeWgtP
@@ -1727,8 +1703,8 @@ contains
        do j=1,ne
           nbrs_used(1,j,k,west) = .true.
           nbrs_used(ne,j,k,east) = .true.
-          
-          
+
+
           GridElem(1 ,j,k)%nbrs(west) = GridElem(ne,j,MODULO(2+k,4)+1)%number
           GridElem(1 ,j,k)%nbrs_face(west) = MODULO(2+k,4)+1
           GridElem(1 ,j,k)%nbrs_wgt(west)  = EdgeWgtP
@@ -1740,8 +1716,8 @@ contains
           if( j /= 1) then
              nbrs_used(1,j,k,swest) = .true.
              nbrs_used(ne,j,k,seast) = .true.
-             
-             
+
+
              GridElem(1 ,j,k)%nbrs(swest)   = GridElem(ne,j-1,MODULO(2+k,4)+1)%number
              GridElem(1 ,j,k)%nbrs_face(swest)   = MODULO(2+k,4)+1
              GridElem(1 ,j,k)%nbrs_wgt(swest)        = CornerWgt
@@ -1752,8 +1728,8 @@ contains
           if( j /= ne) then
              nbrs_used(1,j,k,nwest) = .true.
              nbrs_used(ne,j,k,neast) = .true.
-             
-             
+
+
              GridElem(1 ,j,k)%nbrs(nwest)   = GridElem(ne,j+1,MODULO(2+k,4)+1)%number
              GridElem(1 ,j,k)%nbrs_face(nwest)   = MODULO(2+k,4)+1
              GridElem(1 ,j,k)%nbrs_wgt(nwest)        = CornerWgt
@@ -1772,7 +1748,7 @@ contains
     do i=1,ne
        nbrs_used(i,1,1,south) = .true.
        nbrs_used(i,ne,5,north) = .true.
-              
+
        GridElem(i,1 ,1)%nbrs(south) = GridElem(i,ne,5)%number
        GridElem(i,1 ,1)%nbrs_face(south) = 5
        GridElem(i,1 ,1)%nbrs_wgt(south)      = EdgeWgtP
@@ -1784,7 +1760,7 @@ contains
        if( i /= 1) then
           nbrs_used(i,1,1,swest) = .true.
           nbrs_used(i,ne,5,nwest) = .true.
-          
+
           GridElem(i,1 ,1)%nbrs(swest)    = GridElem(i-1,ne,5)%number
           GridElem(i,1 ,1)%nbrs_face(swest)    = 5
           GridElem(i,1 ,1)%nbrs_wgt(swest)         = CornerWgt
@@ -1795,7 +1771,7 @@ contains
        if( i /= ne) then
           nbrs_used(i,1,1,seast) = .true.
           nbrs_used(i,ne,5,neast) = .true.
-          
+
           GridElem(i,1 ,1)%nbrs(seast)    = GridElem(i+1,ne,5)%number
           GridElem(i,1 ,1)%nbrs_face(seast)    = 5
           GridElem(i,1 ,1)%nbrs_wgt(seast)         = CornerWgt
@@ -1814,8 +1790,8 @@ contains
        irev=ne+1-i
        nbrs_used(i,1,2,south) = .true.
        nbrs_used(ne,i,5,east) = .true.
-       
-       
+
+
        GridElem(i,1 ,2)%nbrs(south) = GridElem(ne,irev,5)%number
        GridElem(i,1 ,2)%nbrs_face(south) = 5
        GridElem(i,1 ,2)%nbrs_wgt(south)      = EdgeWgtP
@@ -1827,8 +1803,8 @@ contains
        if( i /= 1) then
           nbrs_used(i,1,2,swest) = .true.
           nbrs_used(ne,i,5,seast) = .true.
-          
-          
+
+
           GridElem(i,1 ,2)%nbrs(swest) = GridElem(ne,irev+1,5)%number
           GridElem(i,1 ,2)%nbrs_face(swest) = 5
           GridElem(i,1 ,2)%nbrs_wgt(swest)      = CornerWgt
@@ -1839,8 +1815,8 @@ contains
        if(i /= ne) then
           nbrs_used(i,1,2,seast) = .true.
           nbrs_used(ne,i,5,neast) = .true.
-          
-          
+
+
           GridElem(i,1 ,2)%nbrs(seast)   = GridElem(ne,irev-1,5)%number
           GridElem(i,1 ,2)%nbrs_face(seast)   = 5
           GridElem(i,1 ,2)%nbrs_wgt(seast)        = CornerWgt
@@ -1857,7 +1833,7 @@ contains
        irev=ne+1-i
        nbrs_used(i,1,3,south) = .true.
        nbrs_used(i,1,5,south) = .true.
-       
+
        GridElem(i,1,3)%nbrs(south) = GridElem(irev,1,5)%number
        GridElem(i,1,3)%nbrs_face(south) = 5
        GridElem(i,1,3)%nbrs_wgt(south)      = EdgeWgtP
@@ -1869,8 +1845,8 @@ contains
        if( i /= 1) then
           nbrs_used(i,1,3,swest) = .true.
           nbrs_used(i,1,5,swest) = .true.
-          
-          
+
+
           GridElem(i,1,3)%nbrs(swest) = GridElem(irev+1,1,5)%number
           GridElem(i,1,3)%nbrs_face(swest) = 5
           GridElem(i,1,3)%nbrs_wgt(swest)      = CornerWgt
@@ -1881,7 +1857,7 @@ contains
        if(i /= ne) then
           nbrs_used(i,1,3,seast) = .true.
           nbrs_used(i,1,5,seast) = .true.
-          
+
           GridElem(i,1,3)%nbrs(seast)    = GridElem(irev-1,1,5)%number
           GridElem(i,1,3)%nbrs_face(seast)    = 5
           GridElem(i,1,3)%nbrs_wgt(seast)         = CornerWgt
@@ -1899,7 +1875,7 @@ contains
        irev=ne+1-i
        nbrs_used(i,1,4,south) = .true.
        nbrs_used(1,i,5,west) = .true.
-       
+
        GridElem(i,1,4)%nbrs(south) = GridElem(1,i,5)%number
        GridElem(i,1,4)%nbrs_face(south) = 5
        GridElem(i,1,4)%nbrs_wgt(south)      = EdgeWgtP
@@ -1910,7 +1886,7 @@ contains
        if( i /= 1) then
           nbrs_used(i,1,4,swest) = .true.
           nbrs_used(1,i,5,swest) = .true.
-          
+
           GridElem(i,1,4)%nbrs(swest)    = GridElem(1,i-1,5)%number
           GridElem(i,1,4)%nbrs_face(swest)    = 5
           GridElem(i,1,4)%nbrs_wgt(swest)         = CornerWgt
@@ -1921,7 +1897,7 @@ contains
        if( i /= ne) then
           nbrs_used(i,1,4,seast) = .true.
           nbrs_used(1,i,5,nwest) = .true.
-          
+
           GridElem(i,1,4)%nbrs(seast) = GridElem(1,i+1,5)%number
           GridElem(i,1,4)%nbrs_face(seast) = 5
           GridElem(i,1,4)%nbrs_wgt(seast)      = CornerWgt
@@ -1938,8 +1914,8 @@ contains
     do i=1,ne
        nbrs_used(i,ne,1,north) = .true.
        nbrs_used(i,1,6,south) = .true.
-       
-       
+
+
        GridElem(i,ne,1)%nbrs(north) = GridElem(i,1 ,6)%number
        GridElem(i,ne,1)%nbrs_face(north) = 6
        GridElem(i,ne,1)%nbrs_wgt(north)      = EdgeWgtP
@@ -1950,7 +1926,7 @@ contains
        if( i /= 1) then
           nbrs_used(i,ne,1,nwest) = .true.
           nbrs_used(i,1,6,swest) = .true.
-          
+
           GridElem(i,ne,1)%nbrs(nwest) = GridElem(i-1,1 ,6)%number
           GridElem(i,ne,1)%nbrs_face(nwest) = 6
           GridElem(i,ne,1)%nbrs_wgt(nwest)      = CornerWgt
@@ -1961,8 +1937,8 @@ contains
        if( i /= ne) then
           nbrs_used(i,ne,1,neast) = .true.
           nbrs_used(i,1,6,seast) = .true.
-          
-          
+
+
           GridElem(i,ne,1)%nbrs(neast) = GridElem(i+1,1 ,6)%number
           GridElem(i,ne,1)%nbrs_face(neast) = 6
           GridElem(i,ne,1)%nbrs_wgt(neast)      = CornerWgt
@@ -1979,7 +1955,7 @@ contains
     do i=1,ne
        nbrs_used(i,ne,2,north) = .true.
        nbrs_used(ne,i,6,east ) = .true.
-       
+
        GridElem(i,ne,2)%nbrs(north) = GridElem(ne,i,6)%number
        GridElem(i,ne,2)%nbrs_face(north) = 6
        GridElem(i,ne,2)%nbrs_wgt(north)      = EdgeWgtP
@@ -1990,7 +1966,7 @@ contains
        if( i /= 1) then
           nbrs_used(i,ne,2,nwest) = .true.
           nbrs_used(ne,i,6,seast) = .true.
-          
+
           GridElem(i,ne,2)%nbrs(nwest)    = GridElem(ne,i-1,6)%number
           GridElem(i,ne,2)%nbrs_face(nwest)    = 6
           GridElem(i,ne,2)%nbrs_wgt(nwest)         = CornerWgt
@@ -2001,8 +1977,8 @@ contains
        if( i /= ne) then
           nbrs_used(i,ne,2,neast) = .true.
           nbrs_used(ne,i,6,neast) = .true.
-          
-          
+
+
           GridElem(i,ne,2)%nbrs(neast) = GridElem(ne,i+1,6)%number
           GridElem(i,ne,2)%nbrs_face(neast) = 6
           GridElem(i,ne,2)%nbrs_wgt(neast)      = CornerWgt
@@ -2020,7 +1996,7 @@ contains
        irev=ne+1-i
        nbrs_used(i,ne,3,north) = .true.
        nbrs_used(i,ne,6,north) = .true.
-       
+
        GridElem(i,ne,3)%nbrs(north) = GridElem(irev,ne,6)%number
        GridElem(i,ne,3)%nbrs_face(north) = 6
        GridElem(i,ne,3)%nbrs_wgt(north)      = EdgeWgtP
@@ -2031,7 +2007,7 @@ contains
        if( i /= 1) then
           nbrs_used(i,ne,3,nwest) = .true.
           nbrs_used(i,ne,6,nwest) = .true.
-          
+
           GridElem(i,ne,3)%nbrs(nwest) = GridElem(irev+1,ne,6)%number
           GridElem(i,ne,3)%nbrs_face(nwest) = 6
           GridElem(i,ne,3)%nbrs_wgt(nwest)      = CornerWgt
@@ -2042,7 +2018,7 @@ contains
        if( i /= ne) then
           nbrs_used(i,ne,3,neast) = .true.
           nbrs_used(i,ne,6,neast) = .true.
-          
+
           GridElem(i,ne,3)%nbrs(neast) = GridElem(irev-1,ne,6)%number
           GridElem(i,ne,3)%nbrs_face(neast) = 6
           GridElem(i,ne,3)%nbrs_wgt(neast)      = CornerWgt
@@ -2060,7 +2036,7 @@ contains
        irev=ne+1-i
        nbrs_used(i,ne,4,north) = .true.
        nbrs_used(1,i,6,west) = .true.
-       
+
        GridElem(i,ne,4)%nbrs(north) = GridElem(1,irev,6)%number
        GridElem(i,ne,4)%nbrs_face(north) = 6
        GridElem(i,ne,4)%nbrs_wgt(north)      = EdgeWgtP
@@ -2071,7 +2047,7 @@ contains
        if( i /= 1) then
           nbrs_used(i,ne,4,nwest) = .true.
           nbrs_used(1,i,6,swest) = .true.
-          
+
           GridElem(i,ne,4)%nbrs(nwest) = GridElem(1,irev+1,6)%number
           GridElem(i,ne,4)%nbrs_face(nwest) = 6
           GridElem(i,ne,4)%nbrs_wgt(nwest)      = CornerWgt
@@ -2082,7 +2058,7 @@ contains
        if( i /= ne) then
           nbrs_used(i,ne,4,neast) = .true.
           nbrs_used(1,i,6,nwest) = .true.
-          
+
           GridElem(i,ne,4)%nbrs(neast) = GridElem(1,irev-1,6)%number
           GridElem(i,ne,4)%nbrs_face(neast) = 6
           GridElem(i,ne,4)%nbrs_wgt(neast)      = CornerWgt
@@ -2091,7 +2067,7 @@ contains
           GridElem(1,i,6)%nbrs_wgt(nwest)       = CornerWgt
        endif
     end do
-    
+
 
     ielem = 1                       ! Element counter
     do k=1,6
@@ -2130,22 +2106,9 @@ contains
     DEALLOCATE(GridElem)
     DEALLOCATE(nbrs_used)
 
-#if 0
-    if(OutputFiles) then
-       close(7)
-       close(8)
-    endif
-#endif
-
     ! =======================================
     ! Generate cube graph...
     ! =======================================
-
-#if 0
-    if(OutputFiles) then
-       write(9,*)nelem,2*nelem      ! METIS requires this first line
-    endif
-#endif
 
     ! ============================================
     !  Setup the Grid edges (topology independent)
@@ -2163,161 +2126,6 @@ contains
 
   end subroutine CubeTopology
 
-
-
-
-  ! =======================================
-  ! cube_assemble:
-  !
-  ! Assemble the cube field element by element
-  ! this routine is assumed to be single 
-  ! threaded...
-  ! =======================================
-
-  function cube_assemble(gbl,fld,elem,par,nelemd,nelem,ielem) result(ierr)
-    use element_mod, only : element_t
-
-#ifdef _MPI
-    use parallel_mod, only : parallel_t, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_STATUS_SIZE, MPI_REAL8,MPI_TAG
-#else
-    use parallel_mod, only : parallel_t
-#endif
-    real (kind=real_kind) :: gbl(:,:,:,:)    ! global output field 
-    real (kind=real_kind) :: fld(:,:,:)      ! local model field  
-    type (element_t)      :: elem            ! element to assemble 
-    type (parallel_t)     :: par             ! parallel structure 
-    integer               :: nelemd          ! number of elements on the node
-    integer               :: nelem           ! number of elements on the node
-    integer               :: ielem           ! local element ctr 
-    integer               :: ierr            ! returned error code
-
-    ! Local variables
-
-    integer :: ie,je,face_no
-    integer :: ibase,jbase
-    integer :: i,j,k
-    integer :: elem_number
-
-    integer :: ne1,ne2    ! element dimensions
-    integer :: n1,n2      ! gbl face dimensions
-    integer :: nface      ! number of faces (must be 6)
-    integer :: nlyr       ! number of layers
-
-#if defined(_MPI)
-    integer :: ectr       ! global element counter
-    integer tag
-    integer :: count      ! w/o "::", triggers PGI 3.1 F90 bug 
-    integer pe
-    integer status(MPI_STATUS_SIZE)
-    integer mpi_err
-#endif      
-
-    call abortmp('Because convert_gbl_index is not used cube_assemble is broken. ')
-    ne1   = SIZE(fld,1)
-    ne2   = SIZE(fld,2)
-    nlyr  = SIZE(fld,3)
-
-    n1    = SIZE(gbl,1)
-    n2    = SIZE(gbl,2)
-    nface = SIZE(gbl,3)
-
-    ! =========================
-    ! Enforce certain rules...
-    ! =========================
-
-    ierr=0
-
-    if (MODULO(n1,ne1) /= 0) then
-       ierr=-1
-       return
-    end if
-
-    if (MODULO(n2,ne2) /= 0) then 
-       ierr=-2
-       return
-    end if
-
-    if (nface /= 6) then
-       ierr=-3
-       return
-    end if
-
-    ! =========================================================
-    ! Perform global assembly procedure element by element ...
-    ! =========================================================
-
-    if (par%rank==par%root) then
-
-       if (ielem<=nelemd) then
-          elem_number = elem%vertex%number
-
-          call convert_gbl_index(elem_number,ie,je,face_no)
-          if (face_no /= elem%vertex%face_number) call abortmp('Error in getting face number')
-
-          ibase=ie*ne1
-          jbase=je*ne2
-
-          do k=1,nlyr
-             do j=1,ne2
-                do i=1,ne1
-                   gbl(i+ibase,j+jbase,face_no,k)=fld(i,j,k)
-                end do
-             end do
-          end do
-       end if
-
-#if defined(_MPI)
-       if (ielem==nelemd) then
-          ectr=nelemd
-          do while(ectr<nelem)
-             pe    = MPI_ANY_SOURCE
-             tag   = MPI_ANY_TAG
-             count = ne1*ne2*nlyr
-             call MPI_RECV(fld(1,1,1),   &
-                  count,        &
-                  MPI_REAL8,    &
-                  pe,           &
-                  tag,          &  
-                  par%comm,     &
-                  status,       &
-                  mpi_err) 
-
-             elem_number = status(MPI_TAG)
-             ! call convert_gbl_index(elem_number,ie,je,face_no)
-             call abortmp('Because convert_gbl_index is not used for neghbors, the _MPI version needs to be fixed')
-
-             ibase=ie*ne1
-             jbase=je*ne2
-
-             do k=1,nlyr
-                do j=1,ne2
-                   do i=1,ne1
-                      gbl(i+ibase,j+jbase,face_no,k)=fld(i,j,k)
-                   end do
-                end do
-             end do
-
-             ectr=ectr+1
-          end do
-       end if
-
-    else
-
-       pe    = par%root
-       tag   = elem%vertex%number
-       count = ne1*ne2*nlyr
-       call MPI_SEND(fld(1,1,1),    &
-            count,         &
-            MPI_REAL8,     &
-            pe,            &
-            tag,           &
-            par%comm,      &
-            mpi_err)
-#endif
-    end if
-
-  end function cube_assemble
-
   ! ===================================================================
   ! CubeEdgeCount:
   !
@@ -2330,7 +2138,7 @@ contains
     implicit none
     integer                     :: nedge
 
-    if (0==ne) call abortmp('Error in CubeEdgeCount: ne is zero')
+    if (0==ne) call endrun('Error in CubeEdgeCount: ne is zero')
     nedge = nfaces*(ne*ne*nInnerElemEdge - nCornerElemEdge)
 
   end function CubeEdgeCount
@@ -2348,7 +2156,7 @@ contains
 
     implicit none
     integer                     :: nelem
-    if (0==ne) call abortmp('Error in CubeElemCount: ne is zero')
+    if (0==ne) call endrun('Error in CubeElemCount: ne is zero')
 
     nelem = nfaces*ne*ne
   end function CubeElemCount
@@ -2363,14 +2171,6 @@ contains
     logical                            :: reverse
     integer,allocatable                :: forwardV(:), forwardP(:)
     integer,allocatable                :: backwardV(:), backwardP(:)
-    integer                            :: i,ii
-
-    ii=Edge%tail_face
-
-    !map to correct location - for now all on same nbr side have same wgt, so take the first one
-    ii = Edge%tail%nbrs_ptr(ii)
-  
-    np0 = Edge%tail%nbrs_wgt(ii)
 
     sFace = Edge%tail_face
     dFace = Edge%head_face
@@ -2393,76 +2193,51 @@ contains
 
   end subroutine CubeSetupEdgeIndex
 
-! 
+!
 !  HOMME mapping from sphere (or other manifold) to reference element
-!  one should be able to add any mapping here.  For each new map, 
-!  an associated dmap() routine (which computes the map derivative matrix) 
+!  one should be able to add any mapping here.  For each new map,
+!  an associated dmap() routine (which computes the map derivative matrix)
 !  must also be written
 !  Note that for conservation, the parameterization of element edges must be
 !  identical for adjacent elements.  (this is violated with HOMME's default
-!  equi-angular cubed-sphere mapping for non-cubed sphere grids, hence the 
+!  equi-angular cubed-sphere mapping for non-cubed sphere grids, hence the
 !  need for a new map)
 !
-  function ref2sphere_double(a,b, corners3D, ref_map, corners, facenum) result(sphere)
-    real(kind=real_kind)    :: a,b
+  function ref2sphere(a,b, corners3D, ref_map, corners, facenum) result(sphere)
+    real(kind=r8)    :: a,b
     type (spherical_polar_t)      :: sphere
     type (cartesian3d_t)            :: corners3D(4)
     integer :: ref_map
     ! only needed for gnominic maps
-    type (cartesian2d_t), optional  :: corners(4)  
-    integer, optional               :: facenum    
-
-
-    if (ref_map==0) then
-       if (.not. present(corners) ) &
-            call abortmp('ref2sphere_double(): missing arguments for equiangular map')
-       sphere = ref2sphere_equiangular_double(a,b,corners,facenum)
-    elseif (ref_map==1) then
-!       sphere = ref2sphere_gnomonic_double(a,b,corners,face_no)
-       call abortmp('gnomonic map not yet coded')
-    elseif (ref_map==2) then
-       sphere = ref2sphere_elementlocal_double(a,b,corners3D)
-    else
-       call abortmp('ref2sphere_double(): bad value of ref_map')
-    endif
-  end function
-
-  function ref2sphere_longdouble(a,b, corners3D, ref_map, corners, facenum) result(sphere)
-    real(kind=longdouble_kind)    :: a,b
-    type (spherical_polar_t)      :: sphere
-    type (cartesian3d_t)          :: corners3D(4)
     type (cartesian2d_t), optional  :: corners(4)
     integer, optional               :: facenum
-    integer :: ref_map
+
 
     if (ref_map==0) then
        if (.not. present(corners) ) &
-            call abortmp('ref2sphere_double(): missing arguments for equiangular map')
-       sphere = ref2sphere_equiangular_longdouble(a,b,corners,facenum)
+            call endrun('ref2sphere(): missing arguments for equiangular map')
+       sphere = ref2sphere_equiangular(a,b,corners,facenum)
     elseif (ref_map==1) then
-!       sphere = ref2sphere_gnomonic_longdouble(a,b,corners,face_no)
-       call abortmp('gnomonic map not yet coded')
+       call endrun('gnomonic map not yet coded')
     elseif (ref_map==2) then
-       sphere = ref2sphere_elementlocal_longdouble(a,b,corners3D)
+       sphere = ref2sphere_elementlocal(a,b,corners3D)
     else
-       call abortmp('ref2sphere_double(): bad value of ref_map')
+       call endrun('ref2sphere(): bad value of ref_map')
     endif
-  end function
-
-
+  end function ref2sphere
 
 !
 ! map a point in the referece element to the sphere
 !
-  function ref2sphere_equiangular_double(a,b, corners, face_no) result(sphere)         
+  function ref2sphere_equiangular(a,b, corners, face_no) result(sphere)
     implicit none
-    real(kind=real_kind)    :: a,b
+    real(kind=r8)    :: a,b
     integer,intent(in)            :: face_no
     type (spherical_polar_t)      :: sphere
     type (cartesian2d_t)          :: corners(4)
     ! local
-    real(kind=real_kind)               :: pi,pj,qi,qj
-    type (cartesian2d_t)                 :: cart   
+    real(kind=r8)               :: pi,pj,qi,qj
+    type (cartesian2d_t)                 :: cart
 
     ! map (a,b) to the [-pi/2,pi/2] equi angular cube face:  x1,x2
     ! a = gp%points(i)
@@ -2474,53 +2249,15 @@ contains
     cart%x = pi*pj*corners(1)%x &
          + qi*pj*corners(2)%x &
          + qi*qj*corners(3)%x &
-         + pi*qj*corners(4)%x 
+         + pi*qj*corners(4)%x
     cart%y = pi*pj*corners(1)%y &
          + qi*pj*corners(2)%y &
          + qi*qj*corners(3)%y &
-         + pi*qj*corners(4)%y 
-    ! map from [pi/2,pi/2] equ angular cube face to sphere:   
+         + pi*qj*corners(4)%y
+    ! map from [pi/2,pi/2] equ angular cube face to sphere:
     sphere=projectpoint(cart,face_no)
 
-  end function ref2sphere_equiangular_double
-
-
-
-
-!
-! map a point in the referece element to the sphere
-!
-  function ref2sphere_equiangular_longdouble(a,b, corners, face_no) result(sphere)         
-    implicit none
-    real(kind=longdouble_kind)    :: a,b
-    integer,intent(in)            :: face_no
-    type (spherical_polar_t)      :: sphere
-    type (cartesian2d_t)          :: corners(4)
-    ! local
-    real(kind=real_kind)               :: pi,pj,qi,qj
-    type (cartesian2d_t)                 :: cart   
-
-    ! map (a,b) to the [-pi/2,pi/2] equi angular cube face:  x1,x2
-    ! a = gp%points(i)
-    ! b = gp%points(j)
-    pi = (1-a)/2
-    pj = (1-b)/2
-    qi = (1+a)/2
-    qj = (1+b)/2
-    cart%x = pi*pj*corners(1)%x &
-         + qi*pj*corners(2)%x &
-         + qi*qj*corners(3)%x &
-         + pi*qj*corners(4)%x 
-    cart%y = pi*pj*corners(1)%y &
-         + qi*pj*corners(2)%y &
-         + qi*qj*corners(3)%y &
-         + pi*qj*corners(4)%y 
-    ! map from [pi/2,pi/2] equ angular cube face to sphere:   
-    sphere=projectpoint(cart,face_no)
-
-  end function ref2sphere_equiangular_longdouble
-
-
+  end function ref2sphere_equiangular
 
 !-----------------------------------------------------------------------------------------
 ! ELEMENT LOCAL MAP (DOES NOT USE CUBE FACES)
@@ -2539,54 +2276,42 @@ contains
 ! is to utilize a map (X,Y,X) --> (X,Y,Z)/SQRT(X**2+Y**2+Z**2) to
 ! project the quad to the unit sphere.
 ! -----------------------------------------------------------------------------------------
-  function ref2sphere_elementlocal_double(a,b, corners3D) result(sphere)
+  function ref2sphere_elementlocal(a,b, corners3D) result(sphere)
     use element_mod, only : element_t
     implicit none
-    real(kind=real_kind)    :: a,b
+    real(kind=r8)    :: a,b
     type (cartesian3d_t)          :: corners3D(4)
     type (spherical_polar_t)      :: sphere
-    real(kind=real_kind)               ::  q(4) ! local
+    real(kind=r8)               ::  q(4) ! local
 
     q(1)=(1-a)*(1-b); q(2)=(1+a)*(1-b); q(3)=(1+a)*(1+b); q(4)=(1-a)*(1+b);
-    q=q/4.0d0;
-    sphere=ref2sphere_elementlocal_q(q,corners3D)
-  end function 
-  function ref2sphere_elementlocal_longdouble(a,b, corners3D) result(sphere)
-    use element_mod, only : element_t
-    implicit none
-    real(kind=longdouble_kind)    :: a,b
-    type (cartesian3d_t)          :: corners3D(4)
-    type (spherical_polar_t)      :: sphere
-    real(kind=real_kind)               ::  q(4) ! local
-
-    q(1)=(1-a)*(1-b); q(2)=(1+a)*(1-b); q(3)=(1+a)*(1+b); q(4)=(1-a)*(1+b);
-    q=q/4.0d0;
-    sphere=ref2sphere_elementlocal_q(q,corners3D)
-  end function 
+    q=q/4.0_r8;
+    sphere = ref2sphere_elementlocal_q(q,corners3D)
+  end function ref2sphere_elementlocal
 
   function ref2sphere_elementlocal_q(q, corners) result(sphere)
     implicit none
-    real(kind=real_kind)          :: q(4)
+    real(kind=r8)          :: q(4)
     type (spherical_polar_t)      :: sphere
     type (cartesian3d_t)          :: corners(4)
     ! local
-    type (cartesian3d_t)                 :: cart   
-    real(kind=real_kind)               ::  c(3,4),  xx(3), r
+    type (cartesian3d_t)                 :: cart
+    real(kind=r8)               ::  c(3,4),  xx(3), r
     integer :: i
 
 !3D corners fo the quad
-    c(1,1)=corners(1)%x;  c(2,1)=corners(1)%y;  c(3,1)=corners(1)%z; 
-    c(1,2)=corners(2)%x;  c(2,2)=corners(2)%y;  c(3,2)=corners(2)%z; 
-    c(1,3)=corners(3)%x;  c(2,3)=corners(3)%y;  c(3,3)=corners(3)%z; 
-    c(1,4)=corners(4)%x;  c(2,4)=corners(4)%y;  c(3,4)=corners(4)%z; 
+    c(1,1)=corners(1)%x;  c(2,1)=corners(1)%y;  c(3,1)=corners(1)%z;
+    c(1,2)=corners(2)%x;  c(2,2)=corners(2)%y;  c(3,2)=corners(2)%z;
+    c(1,3)=corners(3)%x;  c(2,3)=corners(3)%y;  c(3,3)=corners(3)%z;
+    c(1,4)=corners(4)%x;  c(2,4)=corners(4)%y;  c(3,4)=corners(4)%z;
 
 !physical point on a plane (sliced), not yet on the sphere
     do i=1,3
       xx(i)=sum(c(i,:)*q(:))
-    enddo
+    end do
 
 !distance from the plane point to the origin
-    r=sqrt(xx(1)**2+xx(2)**2+xx(3)**2)
+    r = sqrt(xx(1)**2+xx(2)**2+xx(3)**2)
 
 !projecting the plane point to the sphere
     cart%x=xx(1)/r; cart%y=xx(2)/r; cart%z=xx(3)/r;
@@ -2594,11 +2319,6 @@ contains
 !XYZ coords of the point to lon/lat
     sphere=change_coordinates(cart)
 
-  end function 
-
-
+  end function ref2sphere_elementlocal_q
 
 end module cube_mod
-
-
-
