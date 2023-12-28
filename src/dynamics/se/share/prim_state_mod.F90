@@ -811,15 +811,9 @@ contains
 
 #ifdef _REFSOLN
 ! parallel read file with state vector in unformatted blocks as written above
-#if (defined HORIZ_OPENMP)
-    !$OMP BARRIER
-#endif
 !  Parallel version of ref_state, comment out if writing above
 !    call ref_state_read(vp(:,:,:,:,nets:nete),Tp(:,:,:,nets:nete),ps_vp(:,:,nets:nete), & 
 !	fstub,simday,nets,nete,par)
-#if (defined HORIZ_OPENMP)
-    !$OMP BARRIER
-#endif
 
     npts=np
 
@@ -832,9 +826,6 @@ contains
        print *,simday, "L2=",l2
        print *,simday, "Linf=",linf
     end if
-#if (defined HORIZ_OPENMP)
-    !$OMP BARRIER
-#endif
 #endif
 
 

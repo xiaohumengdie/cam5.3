@@ -647,15 +647,9 @@ contains
        endif
     endif
 
-#if (defined HORIZ_OPENMP)
-    !$OMP BARRIER
-#endif
     if (hybrid%ithr==0) then
        call syncmp(hybrid%par)
     end if
-#if (defined HORIZ_OPENMP)
-    !$OMP BARRIER
-#endif
 
     if (topology /= "cube") then
        call abortmp('Error: only cube topology supported for primaitve equations')
@@ -789,7 +783,6 @@ contains
        ! ========================================
     end if  ! runtype
 
-!$OMP MASTER
     tl%nstep0=2   ! This will be the first full leapfrog step
     if (runtype==1) then
        tl%nstep0=tl%nstep+1            ! restart run: first step = first first full leapfrog step
@@ -800,8 +793,6 @@ contains
        nEndStep = nEndStep-tl%nstep ! restart set this to nmax + tl%nstep
        tl%nstep=0
     endif
-!$OMP END MASTER
-!$OMP BARRIER
 #endif
 
     ! For new runs, and branch runs, convert state variable to (Qdp)

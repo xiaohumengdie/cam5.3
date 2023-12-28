@@ -280,7 +280,6 @@ CONTAINS
     call init_loop_ranges(nelemd)
     if(iam < par%nprocs) then
 
-       !$OMP PARALLEL NUM_THREADS(horz_num_threads), DEFAULT(SHARED), PRIVATE(hybrid,nets,nete,ie)
 
        if ( horz_num_threads == 1) then
          hybrid = config_thread_region(par,'serial')
@@ -345,7 +344,6 @@ CONTAINS
        ! This subroutine is used to create nc_topo files, if requested
        ! 
        call nctopo_util_driver(elem,hybrid,nets,nete)
-       !$OMP END PARALLEL 
     end if
 
     if (inst_index == 1) then
@@ -384,7 +382,6 @@ CONTAINS
     !
     call init_loop_ranges(nelemd)
     if(iam < par%nprocs) then
-       !$OMP PARALLEL NUM_THREADS(horz_num_threads), DEFAULT(SHARED), PRIVATE(hybrid,nets,nete,n,ie)
        if (horz_num_threads == 1) then
          hybrid = config_thread_region(par,'serial')
        else
@@ -399,7 +396,6 @@ CONTAINS
           call prim_run_subcycle(dyn_state%elem,dyn_state%fvm,hybrid,nets,nete,&
                tstep, TimeLevel, hvcoord, n)
        end do
-       !$OMP END PARALLEL
     end if
     rc = DYN_RUN_SUCCESS
 

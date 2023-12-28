@@ -84,9 +84,6 @@ contains
        end do
 
     end do
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
 
     deallocate(gp%points)
     deallocate(gp%weights)
@@ -114,9 +111,6 @@ contains
           end do
        end do
     end do
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
 
     ! =============================================
     ! compute the mass matrix 

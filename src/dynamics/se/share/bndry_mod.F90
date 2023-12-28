@@ -1164,7 +1164,6 @@ contains
     character(len=*), parameter :: subname = 'bndry_exchangeS_nonthreaded_start'
 
 !    call t_adj_detailf(+2)
-!    !$OMP BARRIER
     ithr=0
     nthreads=1
     call bndry_exchangeS_p2p_start(par,nthreads,ithr,buffer,location)
@@ -1229,7 +1228,6 @@ contains
     integer                          :: i,i1,i2
     logical(kind=log_kind),parameter :: Debug = .FALSE.
 
-    !$OMP BARRIER
     if(ithr == 0) then 
 
 
@@ -1298,7 +1296,6 @@ contains
 
 #endif
     endif  ! if (hybrid%ithr == 0)
-    !$OMP BARRIER
 
   end subroutine ghost_exchangeVfull
 
@@ -1346,7 +1343,6 @@ contains
     logical(kind=log_kind),parameter :: Debug = .FALSE.
 
 
-    !$OMP BARRIER
     if(hybrid%ithr == 0) then 
 
 #ifdef _MPI
@@ -1418,7 +1414,6 @@ contains
 
 #endif
     endif  ! if (hybrid%ithr == 0)
-    !$OMP BARRIER
 
   end subroutine ghost_exchangeV
 

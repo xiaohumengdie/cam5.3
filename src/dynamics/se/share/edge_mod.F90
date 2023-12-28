@@ -329,12 +329,10 @@ contains
 ! two different platforms.  Without this barrier, edge buffers initialized from
 ! within the threaded region would not work in a reproducable way with certain
 ! thread combinations.  I cant explain why, but this fixes that issue on Edison
-!$OMP BARRIER
 
     if (nlyr==0) return  ! tracer code might call initedgebuffer() with zero tracers
 
 
-!$OMP MASTER
     !
     ! Keep a counter of how many times initedgebuffer is called.  
     ! This is used to assign a unique message ID for the boundary exchange
@@ -673,10 +671,8 @@ contains
 
 21  format('RANK: ',i8, A,8(i8))
 
-!$OMP END MASTER
 ! MT: This next barrier is also needed - threads cannot start using edge()
 ! until MASTER is done initializing it
-!$OMP BARRIER
 
 !    call t_adj_detailf(-3)
 
@@ -771,8 +767,6 @@ contains
     implicit none
     type (EdgeBuffer_t),intent(inout) :: edge
 
-!$OMP BARRIER
-!$OMP MASTER
     deallocate(edge%buf)
     deallocate(edge%receive)
     if(associated(edge%putmap))     deallocate(edge%putmap)
@@ -809,7 +803,6 @@ contains
     deallocate(edge%rRequest,edge%sRequest,edge%status)
 !    Print *,'FIXME: need to deallocate barrier specific data-structures'
     call gbarrier_delete(edge%gbarrier)
-!$OMP END MASTER
 
   end subroutine FreeEdgeBuffer_r8
 
@@ -818,13 +811,10 @@ contains
     implicit none
     type (Ghostbuffer3d_t),intent(inout) :: buffer
 
-!$OMP BARRIER
-!$OMP MASTER
     buffer%nbuf=0
     buffer%nlyr=0
     deallocate(buffer%buf)
     deallocate(buffer%receive)
-!$OMP END MASTER
 
   end subroutine FreeGhostBuffer3D
   ! ===========================================
@@ -1107,7 +1097,6 @@ contains
     integer :: is,ie,in,iw
 
     if(.not. threadsafe) then
-!$OMP BARRIER
        threadsafe=.true.
     end if
 
@@ -2101,13 +2090,10 @@ contains
     implicit none
     type (GhostBuffertr_t),intent(inout) :: ghost
 
-!$OMP BARRIER
-!$OMP MASTER
     ghost%nbuf=0
     ghost%nlyr=0
     deallocate(ghost%buf)
     deallocate(ghost%receive)
-!$OMP END MASTER
 
   end subroutine FreeGhostBufferTR 
   ! =========================================
@@ -2147,7 +2133,6 @@ contains
     integer :: is,ie,in,iw
 
     if(.not. threadsafe) then
-!$OMP BARRIER
        threadsafe=.true.
     end if
     ! Example convenction for buffer to the north:
@@ -2493,7 +2478,6 @@ contains
     integer :: k,l,l_local,is
 
     if(.not. threadsafe) then
-!$OMP BARRIER
        threadsafe=.true.
     end if
 
@@ -2592,7 +2576,6 @@ contains
     endif
 
     nbuf=max_neigh_edges*nelemd
-!$OMP MASTER
     ghost%nlyr=nlyr
     ghost%nbuf=nbuf
     allocate(ghost%buf(npoints,nhc,nlyr,ntrac,nbuf))
@@ -2600,8 +2583,6 @@ contains
 
     allocate(ghost%receive(npoints,nhc,nlyr,ntrac,nbuf))
     ghost%receive=0
-!$OMP END MASTER
-!$OMP BARRIER
 
   end subroutine initGhostBufferTR
 
@@ -2634,7 +2615,6 @@ subroutine ghostVpack(edge,v,nhc,npoints,vlyr,ntrac,kptr,desc)
   integer :: is,ie,in,iw
 
   if(.not. threadsafe) then
-!$OMP BARRIER
      threadsafe=.true.
   end if
   ! Example convenction for buffer to the north:
@@ -2829,7 +2809,6 @@ subroutine ghostVpackR(edge,v,nhc,npoints,vlyr,ntrac,kptr,desc)
   integer :: is,ie,in,iw
 
   if(.not. threadsafe) then
-!$OMP BARRIER
      threadsafe=.true.
   end if
   ! Example convenction for buffer to the north:
@@ -3469,7 +3448,6 @@ end subroutine ghostVunpackR
 
 
       if(.not. threadsafe) then
-  !$OMP BARRIER
          threadsafe=.true.
       end if
       ! Example convenction for buffer to the north:
@@ -3879,7 +3857,6 @@ end subroutine ghostVunpackR
 
 
       if(.not. threadsafe) then
-  !$OMP BARRIER
          threadsafe=.true.
       end if
       ! Example convenction for buffer to the north:
@@ -4243,7 +4220,6 @@ end subroutine ghostVunpackR
 
 
       if(.not. threadsafe) then
-  !$OMP BARRIER
          threadsafe=.true.
       end if
       ! Example convenction for buffer to the north:
@@ -4617,7 +4593,6 @@ end subroutine ghostVunpackR
     integer :: is,ie,in,iw
 
     if(.not. threadsafe) then
-!$OMP BARRIER
        threadsafe=.true.
     end if
     ! Example convenction for buffer to the north:

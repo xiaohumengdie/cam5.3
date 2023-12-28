@@ -171,11 +171,6 @@ contains
 
        kptr=3*nlev
        call edgeVunpack(edge4, div_np1(1,1,1,ie), nlev, kptr, ie)
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
        ! ======================================
        ! compute Laplacian of T(n+1)
        ! ======================================
@@ -297,11 +292,6 @@ contains
        end do
 
     end do
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
     call t_stopf('prim_diffusion')
 
   end subroutine prim_diffusion
@@ -403,11 +393,6 @@ contains
 !       Dinv     => elem(ie)%Dinv
        
        call edgeVunpack(edgeS2, grad_Q_np1(:,:,:,:,:,ie), 2*nlev*qsize, 0, ie)
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
 
        do q=1,qsize
 
@@ -474,11 +459,6 @@ contains
 
        end do
     end do
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
     call t_stopf('scalar_diffusion')
   end subroutine scalar_diffusion
 
