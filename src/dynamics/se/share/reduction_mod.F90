@@ -262,8 +262,6 @@ contains
       call endrun('ERROR: threadsafe reduction buffer too small')
     end if
 
-    !$OMP BARRIER
-    !$OMP CRITICAL (CRITMAX)
     if (red%ctr == 0) red%buf(1:len)= -9999
     if (red%ctr < hybrid%NThreads) then
        do k=1,len
@@ -272,9 +270,7 @@ contains
        red%ctr=red%ctr+1
     end if
     if (red%ctr == hybrid%NThreads) red%ctr=0
-    !$OMP END CRITICAL (CRITMAX)
 #ifdef _MPI
-    !$OMP BARRIER
     if (hybrid%ithr==0) then
 
        call MPI_Allreduce(red%buf(1),redp,len,Mpi_integer, &
@@ -283,7 +279,6 @@ contains
        red%buf(1:len)=redp(1:len)
     end if
 #endif
-    !$OMP BARRIER
 
   end subroutine pmax_mt_int_1d
   
@@ -305,8 +300,6 @@ contains
       call endrun('ERROR: threadsafe reduction buffer too small')
     end if
 
-    !$OMP BARRIER
-    !$OMP CRITICAL (CRITMAX)
     if (red%ctr == 0) red%buf(1:len)= -9.11e30_r8
     if (red%ctr < hybrid%NThreads) then
        do k=1,len
@@ -315,9 +308,7 @@ contains
        red%ctr=red%ctr+1
     end if
     if (red%ctr == hybrid%NThreads) red%ctr=0
-    !$OMP END CRITICAL (CRITMAX)
 #ifdef _MPI
-    !$OMP BARRIER
     if (hybrid%ithr==0) then
 
        call MPI_Allreduce(red%buf(1),redp,len,Mpi_real8, &
@@ -326,7 +317,6 @@ contains
        red%buf(1:len)=redp(1:len)
     end if
 #endif
-    !$OMP BARRIER
 
   end subroutine pmax_mt_r_1d
 
@@ -356,8 +346,6 @@ contains
       call endrun('ERROR: threadsafe reduction buffer too small')
     end if
 
-    !$OMP BARRIER
-    !$OMP CRITICAL (CRITMAX)
     if (red%ctr == 0) red%buf(1:len)= 9.11e30_r8
     if (red%ctr < hybrid%NThreads) then
        do k=1,len
@@ -366,9 +354,7 @@ contains
        red%ctr=red%ctr+1
     end if
     if (red%ctr == hybrid%NThreads) red%ctr=0
-    !$OMP END CRITICAL (CRITMAX)
 #ifdef _MPI
-    !$OMP BARRIER
     if (hybrid%ithr==0) then
 
        call MPI_Allreduce(red%buf(1),redp,len,Mpi_real8, &
@@ -377,7 +363,6 @@ contains
        red%buf(1:len)=redp(1:len)
     end if
 #endif
-    !$OMP BARRIER
 
   end subroutine pmin_mt_r_1d
 

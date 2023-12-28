@@ -200,11 +200,6 @@ logical var_coef1
 #endif
 
    enddo
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 end subroutine
 
@@ -317,11 +312,6 @@ logical var_coef1
 
       enddo
    enddo
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 end subroutine
 
@@ -379,11 +369,6 @@ logical var_coef1
         enddo
       enddo
    enddo
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 end subroutine
 
@@ -469,11 +454,6 @@ logical var_coef1
         enddo
       enddo
    enddo
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 end subroutine
 
@@ -522,11 +502,6 @@ do ie=nets,nete
       zeta(:,:,k,ie)=zeta(:,:,k,ie)*elem(ie)%rspheremp(:,:)
    enddo
 enddo
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
 
 call FreeEdgeBuffer(edge1) 
 end subroutine
@@ -568,11 +543,6 @@ do ie=nets,nete
       v(:,:,2,k,ie)=v(:,:,2,k,ie)*elem(ie)%rspheremp(:,:)
    enddo
 enddo
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
 
 call FreeEdgeBuffer(edge2) 
 end subroutine
@@ -1040,9 +1010,6 @@ integer :: ie,k,q
     end do
 
     call FreeEdgeBuffer(edgebuf)
-#ifdef DEBUGOMP
-!$OMP BARRIER
-#endif
 
   if(present(kmass))then
     do k=1,nlev
@@ -1327,11 +1294,6 @@ end subroutine
 
 
     end do
-#ifdef DEBUGOMP
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-#endif
-#endif
     write(iulog,'(a,3i4,2e20.10)') 'max diff div-wdiv: ',iie,ii,jj,maxval(abs(divbig(:,:,:)-wdivbig(:,:,:))),maxval(divbig(:,:,:))
 #endif
 

@@ -114,10 +114,6 @@ contains
     ! Local Variable
 
     integer :: ntmp
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-!$OMP MASTER
-#endif
     if (uptype == "leapfrog") then
        ntmp    = tl%np1
        tl%np1  = tl%nm1
@@ -132,10 +128,6 @@ contains
     end if
        
     tl%nstep = tl%nstep+1
-#if (defined HORIZ_OPENMP)
-!$OMP END MASTER
-!$OMP BARRIER    
-#endif
   end subroutine TimeLevel_update
 
 end module time_mod

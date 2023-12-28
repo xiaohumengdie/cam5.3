@@ -50,9 +50,6 @@ contains
     ierr=0            ! clear error state
     hvcoord%ps0 = p0  ! set base-state surface pressure
 
-#if (defined HORIZ_OPENMP)
-!$OMP CRITICAL
-#endif
 
     ln=len(trim(hvfile_int))
     if ( hvfile_int(ln-4:ln) == 'ascii' ) then
@@ -141,9 +138,6 @@ contains
        end if
     endif
 
-#if (defined HORIZ_OPENMP)
-!$OMP END CRITICAL
-#endif
 
   if(ierr>0) return ! Exit if an error occured
 
