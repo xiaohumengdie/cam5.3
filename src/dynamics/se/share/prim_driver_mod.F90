@@ -82,14 +82,10 @@ contains
     ! --------------------------------
     use prim_advance_mod, only: prim_advance_init
     ! --------------------------------
-    use diffusion_mod, only      : diffusion_init
-    ! --------------------------------
     use parallel_mod, only : iam, parallel_t, syncmp, abortmp, global_shared_buf, nrepro_vars
 #ifdef _MPI
     use parallel_mod, only : mpiinteger_t, mpireal_t, mpi_max, mpi_sum, haltmp
 #endif
-    ! --------------------------------
-    use metis_mod, only : genmetispart
     ! --------------------------------
     use spacecurve_mod, only : genspacepart
     ! --------------------------------
@@ -240,10 +236,10 @@ contains
 
     if(partmethod .eq. SFCURVE) then
        if(par%masterproc) write(iulog,*)"partitioning graph using SF Curve..."
-       call genspacepart(GridEdge,GridVertex)
+       call genspacepart(GridVertex)
     else
         if(par%masterproc) write(iulog,*)"partitioning graph using Metis..."
-       call genmetispart(GridEdge,GridVertex)
+!       call genmetispart(GridVertex)
     endif
 
     ! ===========================================================
@@ -487,7 +483,6 @@ contains
 #endif
     call prim_advance_init(par,elem,integration)
     call Prim_Advec_Init1(par, elem,max_num_threads)
-    call diffusion_init(par,elem)
     if (ntrac>0) then
       call fvm_init1(par,elem)
     endif
@@ -512,9 +507,6 @@ contains
          hypervis_subcycle_q, use_semi_lagrange_transport
     use control_mod, only : tracer_transport_type
     use control_mod, only : TRACERTRANSPORT_LAGRANGIAN_FVM, TRACERTRANSPORT_FLUXFORM_FVM, TRACERTRANSPORT_SE_GLL
-#ifndef CAM
-    use control_mod, only : pertlim                     !used for homme temperature perturbations
-#endif
     use prim_si_ref_mod, only: prim_set_mass
     use bndry_mod, only : sort_neighbor_buffer_mapping
     use thread_mod, only : max_num_threads, omp_get_thread_num
@@ -522,14 +514,6 @@ contains
     use global_norms_mod, only : test_global_integral, print_cfl
     use hybvcoord_mod, only : hvcoord_t
     use prim_advection_mod, only: prim_advec_init2, deriv
-#ifdef CAM
-#else
-    use column_model_mod, only : InitColumnModel
-    use held_suarez_mod, only : hs0_init_state
-    use baroclinic_inst_mod, only : binst_init_state, jw_baroclinic
-    use asp_tests, only : asp_tracer, asp_baroclinic, asp_rossby, asp_mountain, asp_gravity_wave, dcmip2_schar
-    use aquaplanet, only : aquaplanet_init_state
-#endif
 
     type (element_t), intent(inout) :: elem(:)
     type (fvm_struct), intent(inout)    :: fvm(:)
@@ -654,146 +638,6 @@ contains
     if (topology /= "cube") then
        call abortmp('Error: only cube topology supported for primaitve equations')
     endif
-
-#ifndef CAM
-    ! =================================
-    ! HOMME stand alone initialization
-    ! =================================
-
-    call InitColumnModel(elem, cm(hybrid%ithr), hvcoord, hybrid, tl,nets,nete,runtype)
-    if(runtype >= 1) then
-       ! ===========================================================
-       ! runtype==1   Exact Restart
-       ! runtype==2   Initial run, but take inital condition from Restart file
-       ! ===========================================================
-       if (hybrid%masterthread) then
-          write(iulog,*) 'runtype: RESTART of primitive equations'
-       end if
-
-       if (test_case(1:10) == "aquaplanet") then
-          if (hybrid%masterthread) then
-             write(iulog,*)  'Initializing aqua planet with MJO-type forcing'
-          end if
-          if(moisture.eq."dry") then
-             call binst_init_state(elem, hybrid,nets,nete,hvcoord)
-          end if
-          call aquaplanet_init_state(elem, hybrid,hvcoord,nets,nete,integration)
-       end if
-
-       call ReadRestart(elem,hybrid%ithr,nets,nete,tl)
-
-       ! scale PS to achieve prescribed dry mass
-       if (runtype /= 1) &
-            call prim_set_mass(elem, tl,hybrid,hvcoord,nets,nete)
-
-       if (runtype==2) then
-          ! copy prognostic variables:  tl%n0 into tl%nm1
-          do ie=nets,nete
-             elem(ie)%state%v(:,:,:,:,tl%nm1)=elem(ie)%state%v(:,:,:,:,tl%n0)
-             elem(ie)%state%T(:,:,:,tl%nm1)=elem(ie)%state%T(:,:,:,tl%n0) 
-             elem(ie)%state%ps_v(:,:,tl%nm1)=elem(ie)%state%ps_v(:,:,tl%n0)
-             elem(ie)%state%lnps(:,:,tl%nm1)=elem(ie)%state%lnps(:,:,tl%n0)
-          enddo
-       endif ! runtype==2
-    else  ! initial run  RUNTYPE=0
-       ! ===========================================================
-       ! Initial Run  - compute initial condition
-       ! ===========================================================
-       if (hybrid%masterthread) then
-          write(iulog,*) ' runtype: INITIAL primitive equations'
-       endif
-       ! ========================================================
-       ! Initialize the test cases
-       ! ========================================================
-       if (test_case(1:10) == "baroclinic") then
-          if (hybrid%masterthread) then
-             write(iulog,*) 'initializing Polvani-Scott-Thomas baroclinic instability test'
-          end if
-
-          call binst_init_state(elem, hybrid,nets,nete,hvcoord)
-       else if (test_case(1:16) == "asp_gravity_wave") then
-          if (hybrid%masterthread) then
-             write(iulog,*) 'initializing ASP gravity wave test'
-          end if
-          call asp_gravity_wave(elem, hybrid,hvcoord,nets,nete, sub_case)
-       else if (test_case(1:12) == "asp_mountain") then
-          if (hybrid%masterthread) then
-             write(iulog,*) 'initializing ASP mountain Rossby test'
-          end if
-          call asp_mountain(elem, hybrid,hvcoord,nets,nete)
-       else if (test_case(1:10) == "asp_rossby") then
-          if (hybrid%masterthread) then
-             write(iulog,*) 'initializing ASP Rossby Haurwitz test'
-          end if
-          call asp_rossby(elem, hybrid,hvcoord,nets,nete)
-       else if (test_case(1:10) == "asp_tracer") then
-          if (hybrid%masterthread) then
-             write(iulog,*) 'initializing pure tracer advection tests'
-          end if
-          call asp_tracer(elem, hybrid,hvcoord,nets,nete)
-       else if (test_case(1:14) == "asp_baroclinic") then
-          if (hybrid%masterthread) then
-             write(iulog,*) 'initializing Jablonowski and Williamson ASP baroclinic instability test'
-          end if
-          call asp_baroclinic(elem, hybrid,hvcoord,nets,nete,fvm)
-       else if (test_case(1:13) == "jw_baroclinic") then
-          if (hybrid%masterthread) then
-             write(iulog,*) 'initializing Jablonowski and Williamson baroclinic instability test V1'
-          end if
-          call jw_baroclinic(elem, hybrid,hvcoord,nets,nete)
-       else if (test_case(1:12) == "held_suarez0") then
-          if (hybrid%masterthread) then
-             write(iulog,*) 'initializing Held-Suarez primitive equations test'
-          end if
-          call hs0_init_state(elem, hvcoord,nets,nete,300.0_real_kind)
-       else if (test_case(1:10) == "aquaplanet") then
-          if (hybrid%masterthread) then
-             write(iulog,*)  'Initializing aqua planet with MJO-type forcing'
-          end if
-          if(moisture.eq."dry") then
-             call binst_init_state(elem, hybrid,nets,nete,hvcoord)
-          end if
-          call aquaplanet_init_state(elem, hybrid,hvcoord,nets,nete,integration)
-       else if (test_case(1:12) == "dcmip2_schar") then
-          if (hybrid%masterthread) then
-             write(iulog,*) 'initializing DCMIP2 test 2-0'
-          end if
-          call dcmip2_schar(elem, hybrid,hvcoord,nets,nete)
-       else
-          call abortmp('Error: unrecognized test case')
-       endif
-
-       if (hybrid%masterthread) then
-          write(iulog,*) '...done'
-       end if
-
-       ! scale PS to achieve prescribed dry mass
-       call prim_set_mass(elem, tl,hybrid,hvcoord,nets,nete)
-
-       do ie=nets,nete
-
-          elem(ie)%state%T=elem(ie)%state%T &
-                * (1.0_real_kind + pertlim)  ! set perlim in ctl_nl namelist for
-                                             ! temperature field initial
-                                             ! perterbation
-       enddo
- 
-       ! ========================================
-       ! Print state and movie output
-       ! ========================================
-    end if  ! runtype
-
-    tl%nstep0=2   ! This will be the first full leapfrog step
-    if (runtype==1) then
-       tl%nstep0=tl%nstep+1            ! restart run: first step = first first full leapfrog step
-    endif
-    if (runtype==2) then
-       ! branch run
-       ! reset time counters to zero since timestep may have changed
-       nEndStep = nEndStep-tl%nstep ! restart set this to nmax + tl%nstep
-       tl%nstep=0
-    endif
-#endif
 
     ! For new runs, and branch runs, convert state variable to (Qdp)
     ! because initial conditon reads in Q, not Qdp

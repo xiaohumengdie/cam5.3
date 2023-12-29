@@ -1,15 +1,12 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module spacecurve_mod
-  use kinds, only : iulog
+  use cam_logfile, only: iulog
+
   implicit none
   private
 
   type, public :: factor_t
      integer                       :: numfact
-     integer, dimension(:),pointer :: factors
+     integer, dimension(:),pointer :: factors => NULL()
   end type factor_t
 
 
@@ -19,13 +16,12 @@ module spacecurve_mod
 
   integer,public                              :: maxdim  ! dimensionality of entire space
   integer,public                              :: vcnt   ! visitation count
-  logical,private                             :: verbose=.FALSE. 
+  logical,private                             :: verbose=.FALSE.
 
   type (factor_t),  public                      :: fact
 
-  !JMD new addition
   SAVE:: fact
-  public :: map 
+  public :: map
   public :: hilbert_old
   public :: PeanoM,hilbert, Cinco
   public :: GenCurve
@@ -34,7 +30,7 @@ module spacecurve_mod
   public :: PrintCurve
   public :: IsFactorable,IsLoadBalanced
   public :: genspacepart
-contains 
+contains
   !---------------------------------------------------------
   recursive function Cinco(l,type,ma,md,ja,jd) result(ierr)
 
@@ -785,28 +781,28 @@ contains
   recursive function hilbert_old(l,d,ma,md,ja,jd) result(ierr)
 
     integer  :: l,d             ! log base 2 of levels and dimensions left
-    integer  :: ma,md           ! main axis and direction 
-    integer  :: ja,jd           ! joiner axis and direction 
+    integer  :: ma,md           ! main axis and direction
+    integer  :: ja,jd           ! joiner axis and direction
 
     integer  :: ierr
     integer  :: axis
     integer  :: ll
 
     if(verbose) write(iulog,10) l,d,ma,md,ja,jd,pos(0),pos(1)
-    ll = l     ! Copy this to a temporary variable 
-    if(d == 0) then 
+    ll = l     ! Copy this to a temporary variable
+    if(d == 0) then
        ll=ll-1
-       if(ll == 0) then 
-          return 
+       if(ll == 0) then
+          return
        endif
        axis = ja
-       if(dir(ll,axis) /= jd) then     ! do not move away from joiner plane 
+       if(dir(ll,axis) /= jd) then     ! do not move away from joiner plane
           axis = MOD(axis+1,maxdim)    ! next axis
        endif
        if(verbose) write(iulog,*)'hilbert_old: call hilbert_old(l,d) #1:'
-       ierr = hilbert_old(ll,maxdim,axis,dir(ll,axis),ja,jd) 
+       ierr = hilbert_old(ll,maxdim,axis,dir(ll,axis),ja,jd)
        dir(ll,ja) = -dir(ll,ja)
-       return 
+       return
     endif
     axis = MOD(ma+1,maxdim)
     if(verbose) write(iulog,*)'hilbert_old: before call hilbert_old(l,d) #2:'
@@ -819,11 +815,11 @@ contains
     dir(ll,ma) = - dir(ll,ma)
 
     !----------------------------------
-    !  Mark this node as visited 
+    !  Mark this node as visited
     !----------------------------------
     if(verbose) write(iulog,20) l,d,ma,md,ja,jd,pos(0),pos(1)
     vcnt=vcnt+1
-    if(verbose) write(iulog,15) pos(0)+1,pos(1)+1,vcnt 
+    if(verbose) write(iulog,15) pos(0)+1,pos(1)+1,vcnt
     if(verbose) write(iulog,*)'  '
     if(verbose) write(iulog,*)'  '
     ordered(pos(0)+1,pos(1)+1)=vcnt
@@ -850,12 +846,12 @@ contains
     integer  :: n
 
     integer  :: log2,tmp
-    ! 
+    !
     !  Find the log2 of input value
     !
     log2 = 1
     tmp =n
-    do while (tmp/2 .ne. 1) 
+    do while (tmp/2 .ne. 1)
        tmp=tmp/2
        log2=log2+1
     enddo
@@ -864,7 +860,7 @@ contains
   !---------------------------------------------------------
   function  IsLoadBalanced(nelem,npart)
 
-    implicit none 
+    implicit none
 
     integer        :: nelem,npart
 
@@ -874,7 +870,7 @@ contains
 
     tmp1 = nelem/npart
 
-    if(npart*tmp1 == nelem ) then 
+    if(npart*tmp1 == nelem ) then
        IsLoadBalanced=.TRUE.
     else
        IsLoadBalanced=.FALSE.
@@ -973,15 +969,18 @@ contains
 
   end function Factor
   !---------------------------------------------------------
-  function IsFactorable(n)
 
-    implicit none 
+  function IsFactorable(n)
+    use cam_abortutils, only: endrun
 
     integer,intent(in)  :: n
     type (factor_t)     :: fact
 
     logical  :: IsFactorable
 
+    if (associated(fact%factors)) then
+      call endrun("fact already allocated!!!")
+    end if
     fact = Factor(n)
     if(fact%numfact .ne. -1) then
        IsFactorable = .TRUE.
@@ -991,6 +990,7 @@ contains
 
   end function IsFactorable
   !------------------------------------------------
+
   subroutine map(l)
 
     implicit none
@@ -1008,12 +1008,12 @@ contains
 
      end subroutine map
      !---------------------------------------------------------
-     subroutine GenSpaceCurve(Mesh) 
+     subroutine GenSpaceCurve(Mesh)
 
        implicit none
 
        integer,target,intent(inout) :: Mesh(:,:)
-       integer :: level,dim 
+       integer :: level,dim
 
        integer :: gridsize
 
@@ -1033,12 +1033,12 @@ contains
        !  The array ordered will contain the visitation order
        ordered(:,:) = 0
 
-       call map(level) 
+       call map(level)
 
        Mesh(:,:) = ordered(:,:)
 
      end subroutine GenSpaceCurve
-     !------------------------------------------------------------------------------------------------------- 
+     !-------------------------------------------------------------------------------------------------------
      subroutine PrintCurve(Mesh)
        implicit none
        integer,target ::  Mesh(:,:)
@@ -1214,25 +1214,19 @@ contains
 
      end subroutine PrintCurve
 
-     !------------------------------------------------------------------------------------------------------- 
-     subroutine genspacepart(GridEdge,GridVertex)
-       use dimensions_mod, only : npart
-       use gridgraph_mod, only : gridedge_t, gridvertex_t
-
-
-       implicit none 
+     !-------------------------------------------------------------------------------------------------------
+     subroutine genspacepart(GridVertex)
+       use dimensions_mod, only: npart
+       use gridgraph_mod,  only: gridedge_t, gridvertex_t
 
        type (GridVertex_t), intent(inout) :: GridVertex(:)
-       type (GridEdge_t),   intent(inout) :: GridEdge(:)
 
-       integer               :: nelem,nelem_edge,nelemd
-       integer               :: head_part,tail_part
-       integer               :: j,k,tmp1,id,s1,extra
+       integer               :: nelem, nelemd
+       integer               :: k, tmp1, id, s1, extra
 
        nelem      = SIZE(GridVertex(:))
-       nelem_edge = SIZE(GridEdge(:))
 
-       nelemd = nelem/npart
+       nelemd = nelem / npart
        ! every cpu gets nelemd elements, but the first 'extra' get nelemd+1
        extra = mod(nelem,npart)
        s1 = extra*(nelemd+1)
@@ -1241,7 +1235,7 @@ contains
        ! 1 ... s1  s2 ... nelem
        !
        !  s1 = extra*(nelemd+1)         (count be 0)
-       !  s2 = s1+1 
+       !  s2 = s1+1
        !
        ! First region gets nelemd+1 elements per Processor
        ! Second region gets nelemd elements per Processor
@@ -1251,23 +1245,28 @@ contains
        !    Grid Vertex and Grid Edge structures
        ! ===========================================
 
-       do k=1,nelem
-          id=GridVertex(k)%SpaceCurve
-          if (id<=s1) then
-             tmp1 = id/(nelemd+1)
-             GridVertex(k)%processor_number = tmp1+1
-          else
-             id=id-s1
-             tmp1 = id/nelemd
-             GridVertex(k)%processor_number = extra + tmp1+1
-          endif
-       enddo
+       do k = 1, nelem
+         id = GridVertex(k)%SpaceCurve
+         if (id <= s1) then
+           tmp1 = id/(nelemd+1)
+           GridVertex(k)%processor_number = tmp1 + 1
+         else
+           id = id - s1
+           tmp1 = id / nelemd
+           GridVertex(k)%processor_number = extra + tmp1+1
+         end if
+       end do
 #if 0
-       write(iulog,*)'Space-Filling Curve Parititioning: '
-       do k=1,nelem
-          write(iulog,*) k,GridVertex(k)%processor_number
-       enddo
-       stop 'halting: at the end of genspacepart'
+       if (masterproc) then
+         write(iulog, *)'Space-Filling Curve Parititioning: '
+         write(iulog, '(2(a,i0))') 'npart = ',npart,', nelem = ',nelem
+         write(iulog, '(2(a,i0))') 'nelemd = ',npart,', extra = ',extra
+         write(iulog, '(a)') ' elem    task#'
+         do k = 1, nelem
+           write(iulog,'(i6,"  ",i6)') k, GridVertex(k)%processor_number
+         end do
+       end if
+       call mpi_barrier(mpicom, tmp1)
 #endif
 
      end subroutine genspacepart
