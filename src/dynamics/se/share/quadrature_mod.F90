@@ -1,21 +1,17 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 #undef _GAUSS_TABLE
-#undef _QUAD_DBG
 module quadrature_mod
-  use kinds, only : longdouble_kind
+  use shr_kind_mod,   only: r8=>shr_kind_r8
+
   implicit none
   private
 
   type, public :: quadrature_t
 #ifdef IS_ACCELERATOR
-     real (kind=longdouble_kind), dimension(:), allocatable :: points
-     real (kind=longdouble_kind), dimension(:), allocatable :: weights
+     real (kind=r8), dimension(:), allocatable :: points
+     real (kind=r8), dimension(:), allocatable :: weights
 #else
-     real (kind=longdouble_kind), dimension(:), pointer :: points
-     real (kind=longdouble_kind), dimension(:), pointer :: weights
+     real (kind=r8), dimension(:), pointer :: points
+     real (kind=r8), dimension(:), pointer :: weights
 #endif
   end type quadrature_t
 
@@ -65,11 +61,11 @@ contains
   function gauss_pts(npts) result(pts)
 
     integer, intent(in) :: npts
-    real (kind=longdouble_kind) :: pts(npts)
+    real (kind=r8) :: pts(npts)
 
-    pts(1) = -0.93246951420315202781d0
-    pts(2) = -0.66120938646626451366d0
-    pts(3) = -0.23861918608319690863d0
+    pts(1) = -0.93246951420315202781_r8
+    pts(2) = -0.66120938646626451366_r8
+    pts(3) = -0.23861918608319690863_r8
     pts(4) = -pts(3)
     pts(5) = -pts(2)
     pts(6) = -pts(1)
@@ -80,12 +76,12 @@ contains
   function gauss_wts(npts,pts) result(wts)
 
     integer, intent(in) :: npts
-    real (kind=longdouble_kind) :: pts(npts)
-    real (kind=longdouble_kind) :: wts(npts)
+    real (kind=r8) :: pts(npts)
+    real (kind=r8) :: wts(npts)
 
-    wts(1)  =  0.17132449237917034504d0
-    wts(2)  =  0.36076157304813860756d0
-    wts(3)  =  0.46791393457269104738d0
+    wts(1)  =  0.17132449237917034504_r8
+    wts(2)  =  0.36076157304813860756_r8
+    wts(3)  =  0.46791393457269104738_r8
     wts(4)  =  wts(3)
     wts(5)  =  wts(2)
     wts(6)  =  wts(1)
@@ -102,42 +98,42 @@ contains
   ! ==============================================================
 
   function gauss_pts(np1) result(pts)
-    use physical_constants, only : qq_pi
+    use physconst, only: pi
 
     integer, intent(in)     :: np1        ! Number of velocity grid points
-    real (kind=longdouble_kind) :: pts(np1)
+    real (kind=r8) :: pts(np1)
 
     ! Local variables
 
-    real (kind=longdouble_kind) :: alpha,beta
-    real (kind=longdouble_kind) :: xjac(0:np1-1)
-    real (kind=longdouble_kind) :: jac(0:np1)
-    real (kind=longdouble_kind) :: djac(0:np1)
+    real (kind=r8) :: alpha,beta
+    real (kind=r8) :: xjac(0:np1-1)
+    real (kind=r8) :: jac(0:np1)
+    real (kind=r8) :: djac(0:np1)
 
     integer  prec                    ! number of mantissa bits
-    real (kind=longdouble_kind) eps      ! machine epsilon
-    real (kind=longdouble_kind), parameter :: convthresh = 10  ! convergence threshold relative\
+    real (kind=r8) eps      ! machine epsilon
+    real (kind=r8), parameter :: convthresh = 10  ! convergence threshold relative\
 
     ! to machine epsilon
     integer, parameter :: kstop = 30 ! max iterations for polynomial deflation
 
-    real (kind=longdouble_kind) :: poly
-    real (kind=longdouble_kind) :: pder
-    real (kind=longdouble_kind) :: recsum,thresh
-    real (kind=longdouble_kind) :: dth
+    real (kind=r8) :: poly
+    real (kind=r8) :: pder
+    real (kind=r8) :: recsum,thresh
+    real (kind=r8) :: dth
 
-    real (kind=longdouble_kind) :: x
-    real (kind=longdouble_kind) :: delx
-    real (kind=longdouble_kind) :: c0,c1,c2,c10
+    real (kind=r8) :: x
+    real (kind=r8) :: delx
+    real (kind=r8) :: c0,c1,c2,c10
 
     integer i,j,k
     integer n, nh
 
     n  = np1 - 1
-    c0 = 0.0_longdouble_kind
-    c1 = 1.0_longdouble_kind
-    c2 = 2.0_longdouble_kind
-    c10 = 10.0_longdouble_kind
+    c0 = 0.0_r8
+    c1 = 1.0_r8
+    c2 = 2.0_r8
+    c10 = 10.0_r8
     alpha = c0
     beta  = c0
 
@@ -154,7 +150,7 @@ contains
     ! Compute first half of the roots by "polynomial deflation".
     ! ============================================================
 
-    dth = QQ_PI/(2*n+2)
+    dth = PI/(2*n+2)
 
     nh  = (n+1)/2
 
@@ -209,20 +205,20 @@ contains
   function gauss_wts(np1, gpts) result(wts)
 
     integer, intent(in)                 :: np1
-    real (kind=longdouble_kind), intent(in) :: gpts(np1)  ! Gauss-Legendre points
-    real (kind=longdouble_kind)             :: wts(np1)   ! Gauss-Legendre weights
+    real (kind=r8), intent(in) :: gpts(np1)  ! Gauss-Legendre points
+    real (kind=r8)             :: wts(np1)   ! Gauss-Legendre weights
 
     ! Local variables
 
-    real (kind=longdouble_kind) :: c0,c1,c2
-    real (kind=longdouble_kind) :: alpha
-    real (kind=longdouble_kind) :: beta
-    real (kind=longdouble_kind) :: djac(np1)
+    real (kind=r8) :: c0,c1,c2
+    real (kind=r8) :: alpha
+    real (kind=r8) :: beta
+    real (kind=r8) :: djac(np1)
     integer i,n
 
-    c0    = 0.0_longdouble_kind
-    c1    = 1.0_longdouble_kind
-    c2    = 2.0_longdouble_kind
+    c0    = 0.0_r8
+    c1    = 1.0_r8
+    c2    = 2.0_r8
 
     alpha = c0
     beta  = c0
@@ -245,13 +241,12 @@ contains
   ! ==============================================================
 
   subroutine test_gauss(npts)
-    use kinds, only: real_kind
 
     integer, intent(in) :: npts
     type (quadrature_t) :: gs
 
     integer i
-    real (kind=real_kind) :: gssum
+    real (kind=r8) :: gssum
     gs=gauss(npts)
 
     print *
@@ -303,43 +298,43 @@ contains
   ! ==============================================================
 
   function gausslobatto_pts(np1) result(pts)
-    use physical_constants, only : QQ_PI
+    use physconst, only: pi
 
     integer, intent(in)     :: np1        ! Number of velocity grid points
-    real (kind=longdouble_kind) :: pts(np1)
+    real (kind=r8) :: pts(np1)
 
     ! Local variables
 
-    real (kind=longdouble_kind) :: alpha,beta
-    real (kind=longdouble_kind) :: xjac(0:np1-1)
-    real (kind=longdouble_kind) :: jac(0:np1)
-    real (kind=longdouble_kind) :: jacm1(0:np1)
-    real (kind=longdouble_kind) :: djac(0:np1)
+    real (kind=r8) :: alpha,beta
+    real (kind=r8) :: xjac(0:np1-1)
+    real (kind=r8) :: jac(0:np1)
+    real (kind=r8) :: jacm1(0:np1)
+    real (kind=r8) :: djac(0:np1)
 
     integer  prec                    ! number of mantissa bits 
-    real (kind=longdouble_kind) eps      ! machine epsilon
-    real (kind=longdouble_kind), parameter :: convthresh = 10  ! convergence threshold relative 
+    real (kind=r8) eps      ! machine epsilon
+    real (kind=r8), parameter :: convthresh = 10  ! convergence threshold relative 
     ! to machine epsilon 
     integer, parameter :: kstop = 30 ! max iterations for polynomial deflation
 
-    real (kind=longdouble_kind) :: a,b,det
-    real (kind=longdouble_kind) :: poly
-    real (kind=longdouble_kind) :: pder
-    real (kind=longdouble_kind) :: recsum,thresh
-    real (kind=longdouble_kind) :: dth,cd,sd,cs,ss,cstmp
+    real (kind=r8) :: a,b,det
+    real (kind=r8) :: poly
+    real (kind=r8) :: pder
+    real (kind=r8) :: recsum,thresh
+    real (kind=r8) :: dth,cd,sd,cs,ss,cstmp
 
-    real (kind=longdouble_kind) :: x
-    real (kind=longdouble_kind) :: delx
-    real (kind=longdouble_kind) :: c0,c1,c2,c10
+    real (kind=r8) :: x
+    real (kind=r8) :: delx
+    real (kind=r8) :: c0,c1,c2,c10
 
     integer i,j,k
     integer n, nh
 
     n  = np1 - 1
-    c0 = 0.0_longdouble_kind
-    c1 = 1.0_longdouble_kind
-    c2 = 2.0_longdouble_kind
-    c10 = 10.0_longdouble_kind
+    c0 = 0.0_r8
+    c1 = 1.0_r8
+    c2 = 2.0_r8
+    c10 = 10.0_r8
 
     alpha = c0
     beta  = c0
@@ -376,7 +371,7 @@ contains
     a   = -(jac(n+1)*jacm1(n-1)-jacm1(n+1)*jac(n-1))/det
     b   = -(jac(n  )*jacm1(n+1)-jacm1(n  )*jac(n+1))/det
 
-    dth = QQ_PI/(2*n+1)
+    dth = PI/(2*n+1)
     cd  = COS(c2*dth)
     sd  = SIN(c2*dth)
     cs  = COS(dth)
@@ -444,19 +439,19 @@ contains
   function gausslobatto_wts(np1, glpts) result(wts)
 
     integer, intent(in)                 :: np1
-    real (kind=longdouble_kind), intent(in) :: glpts(np1)
-    real (kind=longdouble_kind)             :: wts(np1)
+    real (kind=r8), intent(in) :: glpts(np1)
+    real (kind=r8)             :: wts(np1)
 
     ! Local variables
 
-    real (kind=longdouble_kind) :: c0,c2
-    real (kind=longdouble_kind) :: alpha
-    real (kind=longdouble_kind) :: beta
-    real (kind=longdouble_kind) :: jac(np1)
+    real (kind=r8) :: c0,c2
+    real (kind=r8) :: alpha
+    real (kind=r8) :: beta
+    real (kind=r8) :: jac(np1)
     integer i,n
 
-    c0    = 0.0_longdouble_kind
-    c2    = 2.0_longdouble_kind
+    c0    = 0.0_r8
+    c2    = 2.0_r8
     alpha = c0
     beta  = c0
     n     = np1-1
@@ -476,12 +471,11 @@ contains
   ! ==============================================================
 
   subroutine test_gausslobatto(npts)
-    use kinds, only : real_kind
     integer, intent(in) :: npts
     type (quadrature_t) :: gll
 
     integer i
-    real (kind=real_kind) :: gllsum
+    real (kind=r8) :: gllsum
     gll=gausslobatto(npts)
 
     print *
@@ -522,26 +516,26 @@ contains
   subroutine jacobi(n, x, alpha, beta, jac, djac)
 
     integer, intent(in)                 :: n
-    real (kind=longdouble_kind), intent(in) :: x
-    real (kind=longdouble_kind), intent(in) :: alpha
-    real (kind=longdouble_kind), intent(in) :: beta
-    real (kind=longdouble_kind)             :: jac(0:n)
-    real (kind=longdouble_kind)             :: djac(0:n)
+    real (kind=r8), intent(in) :: x
+    real (kind=r8), intent(in) :: alpha
+    real (kind=r8), intent(in) :: beta
+    real (kind=r8)             :: jac(0:n)
+    real (kind=r8)             :: djac(0:n)
 
     ! Local variables
 
-    real (kind=longdouble_kind) :: a1k
-    real (kind=longdouble_kind) :: a2k
-    real (kind=longdouble_kind) :: a3k
-    real (kind=longdouble_kind) :: da2kdx
+    real (kind=r8) :: a1k
+    real (kind=r8) :: a2k
+    real (kind=r8) :: a3k
+    real (kind=r8) :: da2kdx
 
-    real (kind=longdouble_kind) :: c2,c1,c0
+    real (kind=r8) :: c2,c1,c0
 
     integer ::  k
 
-    c0 = 0.0_longdouble_kind
-    c1 = 1.0_longdouble_kind
-    c2 = 2.0_longdouble_kind
+    c0 = 0.0_r8
+    c1 = 1.0_r8
+    c2 = 2.0_r8
 
     jac(0)=c1
     jac(1)=(c1 + alpha)*x
@@ -578,30 +572,30 @@ contains
   function jacobi_polynomials(n, alpha, beta, npoints, x) result(jac)
 
     integer, intent(in)     :: n         ! order of the Jacobi Polynomial
-    real (kind=longdouble_kind) :: alpha 
-    real (kind=longdouble_kind) :: beta
+    real (kind=r8) :: alpha 
+    real (kind=r8) :: beta
     integer, intent(in)     :: npoints
-    real (kind=longdouble_kind) :: x(npoints)
-    real (kind=longdouble_kind) :: jac(npoints)
+    real (kind=r8) :: x(npoints)
+    real (kind=r8) :: jac(npoints)
 
     ! Local variables
 
-    real (kind=longdouble_kind) :: a1k
-    real (kind=longdouble_kind) :: a2k
-    real (kind=longdouble_kind) :: a3k
-    real (kind=longdouble_kind) :: da2kdx
+    real (kind=r8) :: a1k
+    real (kind=r8) :: a2k
+    real (kind=r8) :: a3k
+    real (kind=r8) :: da2kdx
 
-    real (kind=longdouble_kind) :: jacp1
-    real (kind=longdouble_kind) :: jacm1
-    real (kind=longdouble_kind) :: jac0
-    real (kind=longdouble_kind) :: xtmp
+    real (kind=r8) :: jacp1
+    real (kind=r8) :: jacm1
+    real (kind=r8) :: jac0
+    real (kind=r8) :: xtmp
 
-    real (kind=longdouble_kind) :: c2,c1,c0
+    real (kind=r8) :: c2,c1,c0
     integer j,k
 
-    c0 = 0.0_longdouble_kind
-    c1 = 1.0_longdouble_kind
-    c2 = 2.0_longdouble_kind
+    c0 = 0.0_r8
+    c1 = 1.0_r8
+    c2 = 2.0_r8
 
     do j = 1,npoints
 
@@ -643,37 +637,37 @@ contains
   function jacobi_derivatives(n, alpha, beta, npoints, x) result(djac)
 
     integer                , intent(in) :: n         ! order of the Jacobi Polynomial
-    real (kind=longdouble_kind), intent(in) :: alpha 
-    real (kind=longdouble_kind), intent(in) :: beta
+    real (kind=r8), intent(in) :: alpha 
+    real (kind=r8), intent(in) :: beta
     integer                , intent(in) :: npoints
-    real (kind=longdouble_kind), intent(in) :: x(npoints)
+    real (kind=r8), intent(in) :: x(npoints)
 
-    real (kind=longdouble_kind)             :: djac(npoints)
-
-    ! Local variables
+    real (kind=r8)             :: djac(npoints)
 
     ! Local variables
 
-    real (kind=longdouble_kind) :: a1k
-    real (kind=longdouble_kind) :: a2k
-    real (kind=longdouble_kind) :: a3k
-    real (kind=longdouble_kind) :: da2kdx
+    ! Local variables
 
-    real (kind=longdouble_kind) :: jacp1
-    real (kind=longdouble_kind) :: jacm1
-    real (kind=longdouble_kind) :: jac0
-    real (kind=longdouble_kind) :: djacp1
-    real (kind=longdouble_kind) :: djacm1
-    real (kind=longdouble_kind) :: djac0
+    real (kind=r8) :: a1k
+    real (kind=r8) :: a2k
+    real (kind=r8) :: a3k
+    real (kind=r8) :: da2kdx
 
-    real (kind=longdouble_kind) :: xtmp
+    real (kind=r8) :: jacp1
+    real (kind=r8) :: jacm1
+    real (kind=r8) :: jac0
+    real (kind=r8) :: djacp1
+    real (kind=r8) :: djacm1
+    real (kind=r8) :: djac0
 
-    real (kind=longdouble_kind) :: c2,c1,c0
+    real (kind=r8) :: xtmp
+
+    real (kind=r8) :: c2,c1,c0
     integer j,k
 
-    c0 = 0.0_longdouble_kind
-    c1 = 1.0_longdouble_kind
-    c2 = 2.0_longdouble_kind
+    c0 = 0.0_r8
+    c1 = 1.0_r8
+    c2 = 2.0_r8
 
     do j = 1,npoints
 
@@ -725,13 +719,13 @@ contains
   function legendre(x,N) result(leg)
 
     integer   :: N
-    real (kind=longdouble_kind) :: x
-    real (kind=longdouble_kind) :: leg(N+1)
+    real (kind=r8) :: x
+    real (kind=r8) :: leg(N+1)
 
-    real (kind=longdouble_kind) ::  p_1, p_2, p_3
+    real (kind=r8) ::  p_1, p_2, p_3
     integer   :: k
 
-    p_3 = 1.0_longdouble_kind
+    p_3 = 1.0_r8
     leg(1)=p_3
     if (n.ne.0) then
        p_2 = p_3
@@ -762,13 +756,13 @@ contains
     type (quadrature_t), intent(in) :: gquad
     integer            , intent(in) :: N
 
-    real (kind=longdouble_kind) :: gamma(N)
+    real (kind=r8) :: gamma(N)
 
     ! Local variables
-    real (kind=longdouble_kind) :: leg(N)
+    real (kind=r8) :: leg(N)
     integer               :: i,k
 
-    gamma(:)=0.0_longdouble_kind
+    gamma(:)=0.0_r8
 
     do i=1,N
        leg=legendre(gquad%points(i),N-1)
@@ -785,40 +779,39 @@ contains
   ! =======================
 
   subroutine trapN(f,a,b,N,it,s)
-    use kinds, only : real_kind
     INTERFACE
        FUNCTION f(x) RESULT(f_x)   ! Function to be integrated
-         use kinds, only : real_kind
-         real(kind=real_kind), INTENT(IN) :: x
-         real(kind=real_kind) :: f_x
+         use shr_kind_mod, only: r8=>shr_kind_r8
+         real(kind=r8), INTENT(IN) :: x
+         real(kind=r8) :: f_x
        END FUNCTION f
     END INTERFACE
 
-    real(kind=real_kind),intent(in) :: a,b
+    real(kind=r8),intent(in) :: a,b
     integer, intent(in)             :: N
     integer, intent(inout)          :: it
-    real(kind=real_kind), intent(inout) :: s
+    real(kind=r8), intent(inout) :: s
 
-    real(kind=real_kind) :: ssum
-    real(kind=real_kind) :: del
-    real(kind=real_kind) :: rtnm
-    real(kind=real_kind) :: x
+    real(kind=r8) :: ssum
+    real(kind=r8) :: del
+    real(kind=r8) :: rtnm
+    real(kind=r8) :: x
 
     integer :: j
 
     if (N==1) then
-       s = 0.5d0*(b-a)*(f(a) + f(b))
+       s = 0.5_r8*(b-a)*(f(a) + f(b))
        it =1
     else
-       ssum = 0.0d0
-       rtnm =1.0D0/it
+       ssum = 0.0_r8
+       rtnm =1.0_r8/it
        del = (b-a)*rtnm
-       x=a+0.5*del
+       x=a+0.5_r8*del
        do j=1,it
           ssum = ssum + f(x)
           x=x+del
        end do
-       s=0.5d0*(s + del*ssum)
+       s=0.5_r8*(s + del*ssum)
        it=2*it  
     end if
 
@@ -830,23 +823,22 @@ contains
   ! ==========================================
 
   function trapezoid(f,a,b,eps) result(Integral)
-    use kinds, only : real_kind
 
     integer, parameter :: Nmax = 25  ! At most 2^Nmax + 1 points in integral
 
     INTERFACE
        FUNCTION f(x) RESULT(f_x)   ! Function to be integrated
-         use kinds, only : real_kind
-         real(kind=real_kind), INTENT(IN) :: x
-         real(kind=real_kind) :: f_x
+         use shr_kind_mod, only: r8=>shr_kind_r8
+         real(kind=r8), INTENT(IN) :: x
+         real(kind=r8) :: f_x
        END FUNCTION f
     END INTERFACE
 
-    real(kind=real_kind), intent(in) :: a,b       ! The integral bounds
-    real(kind=real_kind), intent(in) :: eps       ! relative error bound for integral
-    real(kind=real_kind)             :: Integral  ! the integral result (within eps)
-    real(kind=real_kind)             :: s         ! Integral approximation
-    real(kind=real_kind)             :: sold      ! previous integral approx
+    real(kind=r8), intent(in) :: a,b       ! The integral bounds
+    real(kind=r8), intent(in) :: eps       ! relative error bound for integral
+    real(kind=r8)             :: Integral  ! the integral result (within eps)
+    real(kind=r8)             :: s         ! Integral approximation
+    real(kind=r8)             :: sold      ! previous integral approx
 
     integer                          :: N
     integer                          :: it
@@ -855,16 +847,13 @@ contains
     ! Calculate I here using trapezoid rule using f and a DO loop...
     ! ==============================================================
 
-    s    = 1.0D30
-    sold = 0.0D0
+    s    = 1.0e30_r8
+    sold = 0.0_r8
     N=1
     it=0
     do while(N<=Nmax .and. ABS(s-sold)>eps*ABS(sold))
        sold=s
        call trapN(f,a,b,N,it,s)
-#ifdef _QUAD_DBG
-       print *,"N=",N," ABS(s-sold)",ABS(s-sold)," threshold=",ABS(sold)*eps
-#endif
        N=N+1
     end do
 
@@ -878,25 +867,24 @@ contains
   ! ==========================================
 
   function simpsons(f,a,b,eps) result(Integral)
-    use kinds, only : real_kind
 
     integer, parameter :: Nmax = 25  ! At most 2^Nmax + 1 points in integral
 
     INTERFACE
        FUNCTION f(x) RESULT(f_x)   ! Function to be integrated
-         use kinds, only : real_kind
-         real(kind=real_kind), INTENT(IN) :: x
-         real(kind=real_kind) :: f_x
+         use shr_kind_mod, only: r8=>shr_kind_r8
+         real(kind=r8), INTENT(IN) :: x
+         real(kind=r8) :: f_x
        END FUNCTION f
     END INTERFACE
 
-    real(kind=real_kind), intent(in) :: a,b       ! The integral bounds
-    real(kind=real_kind), intent(in) :: eps       ! relative error bound for integral
-    real(kind=real_kind)             :: Integral  ! the integral result (within eps)
-    real(kind=real_kind)             :: s         ! Integral approximation
-    real(kind=real_kind)             :: os        ! previous integral approx
-    real(kind=real_kind)             :: st        ! Integral approximation
-    real(kind=real_kind)             :: ost       ! previous integral approx
+    real(kind=r8), intent(in) :: a,b       ! The integral bounds
+    real(kind=r8), intent(in) :: eps       ! relative error bound for integral
+    real(kind=r8)             :: Integral  ! the integral result (within eps)
+    real(kind=r8)             :: s         ! Integral approximation
+    real(kind=r8)             :: os        ! previous integral approx
+    real(kind=r8)             :: st        ! Integral approximation
+    real(kind=r8)             :: ost       ! previous integral approx
 
     integer                          :: N
     integer                          :: it
@@ -905,19 +893,16 @@ contains
     ! Calculate I here using trapezoid rule using f and a DO loop...
     ! ==============================================================
 
-    ost= 0.0D0
-    s  = 1.0D30
-    os = 0.0D0
+    ost= 0.0_r8
+    s  = 1.0e30_r8
+    os = 0.0_r8
 
     N=1
     it=0
     do while ((N<=Nmax .and. ABS(s-os)>eps*ABS(os) ) .or. N<=2)
        os = s
        call trapN(f,a,b,N,it,st)
-       s=(4.0D0*st-ost)/3.0D0
-#ifdef _QUAD_DBG
-       print *,"N=",N," ABS(s-os)=",ABS(s-os)," threshold=",ABS(os)*eps
-#endif
+       s=(4.0_r8*st-ost)/3.0_r8
        ost=st
        N=N+1
     end do
@@ -937,34 +922,33 @@ contains
   ! ==========================================
 
   function gaussian_int(f,a,b,gs) result(Integral)
-    use kinds, only : real_kind
 
     integer, parameter :: Nmax = 10  ! At most 2^Nmax + 1 points in integral
 
     INTERFACE
        FUNCTION f(x) RESULT(f_x)   ! Function to be integrated
-         use kinds, only : real_kind
-         real(kind=real_kind), INTENT(IN) :: x
-         real(kind=real_kind) :: f_x
+         use shr_kind_mod, only: r8=>shr_kind_r8
+         real(kind=r8), INTENT(IN) :: x
+         real(kind=r8) :: f_x
        END FUNCTION f
     END INTERFACE
 
-    real(kind=real_kind), intent(in) :: a,b       ! The integral bounds
+    real(kind=r8), intent(in) :: a,b       ! The integral bounds
     type(quadrature_t), intent(in)   :: gs        ! gaussian points/wts
-    real(kind=real_kind)             :: Integral  ! the integral result (within eps)
+    real(kind=r8)             :: Integral  ! the integral result (within eps)
 
     integer                          :: i
-    real (kind=real_kind)            :: s,x
+    real (kind=r8)            :: s,x
     ! ==============================================================
     ! Calculate I = S f(x)dx here using gaussian quadrature
     ! ==============================================================
 
-    s = 0.0D0
+    s = 0.0_r8
     do i=1,SIZE(gs%points)
-       x = 0.50D0*((b-a)*gs%points(i) + (b+a))
+       x = 0.50_r8*((b-a)*gs%points(i) + (b+a))
        s = s + gs%weights(i)*f(x)
     end do
-    Integral = s*(0.5D0*(b-a))
+    Integral = s*(0.5_r8*(b-a))
 
   end function gaussian_int
 

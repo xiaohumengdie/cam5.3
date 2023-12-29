@@ -1,14 +1,7 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-!************************metagraph_mod.F****************************************
-
 module metagraph_mod
-  use kinds, only : int_kind, iulog
+  use cam_logfile,   only: iulog
   use gridgraph_mod, only : gridvertex_t, gridedge_t, &
        allocate_gridvertex_nbrs, assignment ( = )
-  use pio_types ! _EXTERNAL
 
   implicit none 
   private 
@@ -39,19 +32,17 @@ module metagraph_mod
   end type MetaVertex_t
 
 
-  ! public :: findedge
   public :: edge_uses_vertex
   public :: PrintMetaEdge, PrintMetaVertex
   public :: LocalElemCount
-  !public :: MetaEdgeCount
   public :: initMetaGraph
 
   interface assignment ( = )
      module procedure copy_metaedge
   end interface
 
-
-contains 
+CONTAINS
+ 
   ! =====================================
   ! copy vertex:
   ! copy device for overloading = sign.
@@ -93,88 +84,17 @@ contains
 
   end subroutine copy_metaedge
 
-
-! function findedge(mEdge,Edge) result(number)
-
-!   type(MetaEdge_t), intent(inout) :: mEdge(:)
-!   type(GridEdge_t), intent(in)    :: Edge
-!   integer :: number
-
-!   integer :: head,tail,exist
-
-!   integer :: nedge
-!   integer :: i
-
-!   nedge=SIZE(mEdge)
-!   number = 0
-!   tail=Edge%tail%processor_number
-!   head=Edge%head%processor_number
-
-!   exist=0
-!   do i=1,nedge
-!      !       write(iulog,*)'mEdge(i)%number: ',mEdge(i)%number
-!      if(mEdge(i)%number .ne. 0) then 
-!         if  ((mEdge(i)%TailVertex==tail .and. mEdge(i)%HeadVertex==head) ) then
-!            number=i
-!         end if
-!         exist=exist+1
-!      endif
-!   end do
-!   if(number == 0) number = exist + 1
-
-! end function findedge
-
-! function MetaEdgeCount(Edge) result(nMedge)
-!   implicit none
-
-!   type (GridEdge_t),intent(in)  :: Edge(:)
-!   integer                       :: nMedge
-
-!   integer                       :: nedge,i,j,maxedges
-!   integer                       :: head_processor_number,tail_processor_number
-!   integer, allocatable          :: tmp(:,:)
-!   logical                       :: found
-
-
-!   nedge = SIZE(Edge)
-!   maxedges=nedge
-
-!   allocate(tmp(2,maxedges))
-!   tmp=0
-!   nMedge=0
-!   do i=1,nedge
-!      head_processor_number = Edge(i)%head%processor_number
-!      tail_processor_number = Edge(i)%tail%processor_number
-!      found = .FALSE.
-!      do j=1,nMedge
-!         if((tmp(1,j) .eq. head_processor_number).and. &
-!              (tmp(2,j) .eq. tail_processor_number)) found=.TRUE.
-!      enddo
-!      if(.NOT. found) then 
-!         nMedge=nMedge+1
-!         tmp(1,nMedge) = head_processor_number
-!         tmp(2,nMedge) = tail_processor_number
-!      endif
-!   enddo
-!   !mem    write(iulog,*)'MetaEdgeCount: before call to deallocate(tmp)'
-!   deallocate(tmp)
-
-! end function MetaEdgeCount
-
   function LocalElemCount(Vertex) result(nelemd)
-    implicit none
 
     type (MetaVertex_t),intent(in)  :: Vertex
     integer                         :: nelemd
 
-    nelemd=Vertex%nmembers
-
+    nelemd = Vertex%nmembers
 
   end function LocalElemCount
 
   function edge_uses_vertex(Vertex,Edge) result(log)
 
-    implicit none
     type(MetaVertex_t), intent(in) :: Vertex
     type(MetaEdge_t),   intent(in) :: Edge
     logical :: log
@@ -241,7 +161,7 @@ contains
     !------------------
     implicit none
 
-    integer(kind=int_kind), intent(in)      :: ThisProcessorNumber
+    integer, intent(in)      :: ThisProcessorNumber
     type (MetaVertex_t), intent(out)        :: MetaVertex
     type (GridVertex_t), intent(in),target  :: GridVertex(:)
     type (GridEdge_t),   intent(in),target  :: GridEdge(:)
@@ -273,28 +193,6 @@ contains
     NULLIFY(mEdgeList%first)
     call LLSetEdgeCount(0)
 
-#if 0
-    ! look for internal (move) edges and add them first 
-    do i=1,nelem_edge
-       tail_processor_number = GridEdge(i)%tail%processor_number
-       head_processor_number = GridEdge(i)%head%processor_number
-       if(tail_processor_number  .eq. ThisProcessorNumber .and.  &
-          head_processor_number  .eq. ThisProcessorNumber ) then
-          call LLInsertEdge(mEdgeList,tail_processor_number,head_processor_number,eNum)
-       endif
-    enddo
-    ! next add the off processor (send/receive) edges 
-    do i=1,nelem_edge
-       tail_processor_number = GridEdge(i)%tail%processor_number
-       head_processor_number = GridEdge(i)%head%processor_number
-       if((tail_processor_number  .eq. ThisProcessorNumber .or.  &
-          head_processor_number  .eq. ThisProcessorNumber) .and. &
-          (tail_processor_number .ne. head_processor_number) ) then
-          call LLInsertEdge(mEdgeList,tail_processor_number,head_processor_number,eNum)
-       endif
-    enddo
-
-#else
     do i=1,nelem_edge
        tail_processor_number = GridEdge(i)%tail%processor_number
        head_processor_number = GridEdge(i)%head%processor_number
@@ -303,7 +201,7 @@ contains
           call LLInsertEdge(mEdgeList,tail_processor_number,head_processor_number,eNum)
        endif
     enddo
-#endif
+
     call LLGetEdgeCount(nedges)
 
     NULLIFY(MetaVertex%edges)

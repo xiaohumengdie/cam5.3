@@ -1,7 +1,3 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module params_mod
    integer, public, parameter :: INTERNAL_EDGE  = 0
    integer, public, parameter :: EXTERNAL_EDGE  = 1

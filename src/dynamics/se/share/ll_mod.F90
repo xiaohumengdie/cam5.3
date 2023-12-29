@@ -1,7 +1,3 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module ll_mod
   implicit none
   private
@@ -9,22 +5,23 @@ module ll_mod
      integer :: id
      integer :: Src,Dest
      logical :: valid
-     type(node_t), pointer :: prev,next
+     type(node_t), pointer :: prev => NULL()
+     type(node_t), pointer :: next => NULL()
   end type node_t
 
   type :: root_t
      integer     :: number
-     type(node_t), pointer :: first
+     type(node_t), pointer :: first => NULL()
   end type root_t
   public :: node_t, root_t
-  integer, public :: NumEdges 
+  integer, public :: NumEdges
 
   public :: PrintEdgeList
   public :: LLAddEdge,LLFindEdge, LLInsertEdge
   public :: LLSetEdgeCount,LLGetEdgeCount
   public :: LLFree
 
-contains 
+contains
 
   subroutine LLSetEdgeCount(value)
     implicit none
@@ -47,7 +44,7 @@ contains
 
     do i=1,nlist
        temp_node => EdgeList(i)%first
-       do while(associated(temp_node)) 
+       do while(associated(temp_node))
           print *,'Vertex: ',EdgeList(i)%number ,temp_node%Src,'->' ,temp_node%dest, '(',temp_node%id,')'
           temp_node => temp_node%next
        enddo
@@ -64,17 +61,19 @@ contains
 
 
     temp_node => List%first
-    ! Find the end of the list
-    do while(associated(temp_node%next))
-       temp_node => temp_node%next
-    enddo
+    if (associated(temp_node)) then
+      ! Find the end of the list
+      do while(associated(temp_node%next))
+        temp_node => temp_node%next
+      end do
 
-    temp_node => temp_node%prev
-    !Now step back and deallocate all entries  
-    do while(associated(temp_node))
-       deallocate(temp_node%next)
-       temp_node => temp_node%prev
-    enddo
+      temp_node => temp_node%prev
+      !Now step back and deallocate all entries
+      do while(associated(temp_node))
+        deallocate(temp_node%next)
+        temp_node => temp_node%prev
+      end do
+    end if
 
   end subroutine LLFree
 
@@ -84,9 +83,9 @@ contains
     integer, intent(out) :: eNum
     logical :: found
 
-    call LLFindEdge(EdgeList,src,dest,eNum,found) 
-    if(.not. found) then 
-       call LLAddEdge(EdgeList,src,dest,eNum) 
+    call LLFindEdge(EdgeList,src,dest,eNum,found)
+    if(.not. found) then
+       call LLAddEdge(EdgeList,src,dest,eNum)
     endif
 
   end subroutine LLInsertEdge
@@ -104,8 +103,8 @@ contains
 
     temp_node => Edge%first
     do while(associated(temp_node) .and. (.not. found))
-       if((dest .eq. temp_node%dest) .and. (src .eq. temp_node%Src) ) then 
-          found = .TRUE. 
+       if((dest .eq. temp_node%dest) .and. (src .eq. temp_node%Src) ) then
+          found = .TRUE.
           id=temp_node%id
        else
           temp_node => temp_node%next
@@ -140,9 +139,9 @@ contains
     new_node%prev => parent
 
     if(associated(EdgeList%first)) then
-       parent%next => new_node 
+       parent%next => new_node
     else
-       EdgeList%first => new_node 
+       EdgeList%first => new_node
     endif
     id = NumEdges
 

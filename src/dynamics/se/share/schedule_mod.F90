@@ -1,6 +1,6 @@
 module schedule_mod
   use metagraph_mod, only: MetaEdge_t
-  use schedtype_mod, only: Cycle_t, Schedule_t, schedule
+  use schedtype_mod, only: Cycle_t, Schedule_t, schedule, pgindex_t, HME_Ordinal,HME_Cardinal
   use parallel_mod,  only: parallel_t
   use cam_logfile,   only: iulog
 
@@ -147,12 +147,14 @@ contains
     LSchedule%pIndx(:)%lenP     = -1
     LSchedule%pIndx(:)%lenS     = -1
     LSchedule%pIndx(:)%mesgid   = -1
+    LSchedule%pIndx(:)%edgeType = -1
 
     LSchedule%gIndx(:)%elemId   = -1
     LSchedule%gIndx(:)%edgeId   = -1
     LSchedule%gIndx(:)%lenP     = -1
     LSchedule%gIndx(:)%lenS     = -1
     LSchedule%gIndx(:)%mesgid   = -1
+    LSchedule%gIndx(:)%edgeType = -1
 
     LSchedule%pPtr=1
     LSchedule%gPtr=1
@@ -294,7 +296,7 @@ contains
 
     deallocate(Global2Local)
 
-#ifdef _MPI
+#ifdef SPMD
     !================================================================
     !     Allocate a couple of structures for bndry_exchange
     !        done here to remove it from the critical path
@@ -498,6 +500,7 @@ contains
   end subroutine CheckSchedule
 
   subroutine PrintSchedule(Schedule)
+    ! Debug subroutine for the schedule_t data-structure
     use gridgraph_mod, only : printgridedge
 
     type (Schedule_t),intent(in),target   :: Schedule(:)
@@ -591,6 +594,11 @@ contains
           schedule%pIndx(schedule%pPtr)%mesgid=Edge%HeadVertex-1  ! convert this to 0-based
           schedule%pIndx(schedule%pPtr)%lenP  =Edge%members(i)%wgtP
           schedule%pIndx(schedule%pPtr)%lenS  =Edge%members(i)%wgtS
+          if (face.ge.5) then 
+             schedule%pIndx(schedule%pPtr)%edgeType = HME_Ordinal
+          else
+             schedule%pIndx(schedule%pPtr)%edgeType = HME_Cardinal
+          endif
           schedule%pPtr=schedule%pPtr+1
         end if
       end if
@@ -625,6 +633,11 @@ contains
           schedule%gIndx(schedule%gPtr)%mesgid=Edge%TailVertex-1  ! convert this to 0-based
           schedule%gIndx(schedule%gPtr)%lenP  =Edge%members(i)%wgtP
           schedule%gIndx(schedule%gPtr)%lenS  =Edge%members(i)%wgtS
+          if (face.ge.5) then 
+             schedule%gIndx(schedule%gPtr)%edgeType = HME_Ordinal
+          else
+             schedule%gIndx(schedule%gPtr)%edgeType = HME_Cardinal
+          endif
           schedule%gPtr=schedule%gPtr+1
         end if
       end if
