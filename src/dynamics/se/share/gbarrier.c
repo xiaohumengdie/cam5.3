@@ -1,4 +1,4 @@
-//:
+//: multi-level barrier code; predefined to a max of 64 threads, as below
 
 // We need to define the Log2 of the maximum number of threads:
 #define LOG2MAX 6
@@ -80,10 +80,6 @@ void gbarrier_synchronize(GBarrier* b, int thread)
 
   // Swap our parity between 0 & 1:
   my->parity = 1 - my->parity;
-
-//  if (my->parity > 1) {
-//     printf("Parity error! : %d\n", my->parity);
-//  }
 }
 
 void gbarrier_initialize(GBarrier **ptb, int numThreads) {

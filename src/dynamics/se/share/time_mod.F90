@@ -1,24 +1,23 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module time_mod
   !------------------
-  use kinds, only : real_kind
+  use shr_kind_mod,   only: r8=>shr_kind_r8
   !------------------
   implicit none
   integer,public                :: nsplit=1
+  integer,public                :: nsplit_baseline=-1
+  integer,public                :: rsplit_baseline=-1
   integer,public                :: nmax          ! Max number of timesteps
   integer,public                :: nEndStep      ! Number of End Step
   integer,public                :: ndays         ! Max number of days
-  real (kind=real_kind), public :: tstep         ! Dynamics timestep
-  real (kind=real_kind), public :: phys_tscale=0 ! Physics time scale
 
-  real (kind=real_kind), public, parameter :: secphr = 3600.0D0 ! Timestep filter
-  real (kind=real_kind), public, parameter :: secpday = 86400.0D0 ! Timestep filter
+  real (kind=r8)           , public :: tstep         ! Dynamics timestep
+  real (kind=r8)           , public :: phys_tscale=0 ! Physics time scale
+
+  real (kind=r8), public, parameter :: secphr = 3600.0D0 ! Timestep filter
+  real (kind=r8), public, parameter :: secpday = 86400.0D0 ! Timestep filter
 
   ! smooth now in namelist
-  real (kind=real_kind), public :: smooth  = 0.05D0    ! Timestep filter
+  real (kind=r8), public :: smooth  = 0.05D0    ! Timestep filter
   integer, parameter :: ptimelevels = 3                           ! number of time levels in the dycore
 
   type, public :: TimeLevel_t
@@ -45,7 +44,7 @@ contains
 
   function Time_at(nstep) result(tat)
     integer, intent(in) :: nstep
-    real (kind=real_kind) :: tat
+    real (kind=r8) :: tat
     tat = nstep*tstep
   end function Time_at
 

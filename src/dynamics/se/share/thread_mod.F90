@@ -1,7 +1,3 @@
-#ifdef HAVE_CONFIG_H  
-#include "config.h"
-#endif
-
 module thread_mod
 
 #ifdef _OPENMP
@@ -13,11 +9,13 @@ module thread_mod
        omp_get_nested,      &
        omp_set_nested
 #endif
+  use cam_logfile,            only: iulog
+  use spmd_utils,             only: masterproc
 
   implicit none
   private
 
-  integer, public :: max_num_threads=1    ! maximum number of OpenMP threads
+  integer, public :: max_num_threads=1 ! maximum number of OpenMP threads
   integer, public :: horz_num_threads=1   ! number of OpenMP threads in horizontal
   integer, public :: vert_num_threads=1   ! number of OpenMP threads in vertical
   integer, public :: tracer_num_threads=1 ! number of OpenMP threads in tracers
@@ -67,11 +65,19 @@ contains
 
   subroutine initomp
     max_num_threads = 1
+    if (masterproc) then
+      write(iulog,*) "INITOMP: INFO: openmp not activated"
+    end if
   end subroutine initomp
 
 #else
   subroutine initomp
-    max_num_threads = omp_get_max_threads()
+
+    max_num_threads = omp_get_num_threads()
+
+    if (masterproc) then
+      write(iulog,*) "INITOMP: INFO: number of OpenMP threads = ", max_num_threads
+    end if
   end subroutine initomp
 #endif
 

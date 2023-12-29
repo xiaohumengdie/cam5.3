@@ -24,6 +24,7 @@ module schedtype_mod
       integer :: edgeid
       integer :: mesgid
       integer :: lenP,lenS
+      integer :: edgeType
   end type pgindex_t
 
   type, public :: Schedule_t
@@ -50,6 +51,9 @@ module schedtype_mod
   type (Schedule_t), public, allocatable, target  :: Schedule(:)
   type (Schedule_t), public, allocatable, target  :: gSchedule(:)
   type (Schedule_t), public, allocatable, target  :: sSchedule(:)
+
+  integer,public,parameter :: HME_Cardinal = 101
+  integer,public,parameter :: HME_Ordinal  = 102
 
 
 end module schedtype_mod
