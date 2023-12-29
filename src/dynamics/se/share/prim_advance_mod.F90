@@ -86,7 +86,6 @@ contains
     use hybrid_mod, only : hybrid_t
     use reduction_mod, only : reductionbuffer_ordered_1d_t
     use time_mod, only : TimeLevel_t,  timelevel_qdp
-    use diffusion_mod, only :  prim_diffusion
 
 #ifndef CAM
     use asp_tests, only : asp_advection_vertical
