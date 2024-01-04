@@ -18,8 +18,6 @@ private
      real (kind=r8) :: Dvv_diag(np,np)
      real (kind=r8) :: Dvv_twt(np,np)
      real (kind=r8) :: Mvv_twt(np,np)  ! diagonal matrix of GLL weights
-     real (kind=r8) :: Mfvm(np,nc+1)
-     real (kind=r8) :: Cfvm(np,nc)
      real (kind=r8) :: legdg(np,np)
   end type derivative_t
 
@@ -48,8 +46,6 @@ private
   public :: vorticity
   public :: divergence
 
-  public :: interpolate_gll2fvm_corners
-  public :: interpolate_gll2fvm_points
   public :: remap_phys2gll
 
 
@@ -107,10 +103,8 @@ contains
 ! derivatives and interpolating
 ! ==========================================
 
-  subroutine derivinit(deriv,fvm_corners, fvm_points)
+  subroutine derivinit(deriv)
     type (derivative_t)      :: deriv
-    real (kind=r8),optional :: fvm_corners(nc+1)
-    real (kind=r8),optional :: fvm_points(nc)
 
     ! Local variables
     type (quadrature_t) :: gp   ! Quadrature points and weights on pressure grid
@@ -159,11 +153,6 @@ contains
 
     deriv%Dvv_twt = TRANSPOSE(dvv)
     deriv%Mvv_twt = v2v
-    if (present(fvm_corners)) &
-         call v2pinit(deriv%Mfvm,gp%points,fvm_corners,np,nc+1)
-
-    if (present(fvm_points)) &
-         call v2pinit(deriv%Cfvm,gp%points,fvm_points,np,nc)
 
     ! notice we deallocate this memory here even though it was allocated
     ! by the call to gausslobatto.
@@ -770,92 +759,6 @@ end do
     end do
 
   end subroutine vorticity
-
-!  ================================================
-!  interpolate_gll2fvm_points:
-!
-!  shape funtion interpolation from data on GLL grid to cellcenters on physics grid
-!  Author: Christoph Erath
-!  ================================================
-  subroutine interpolate_gll2fvm_points(v,deriv,p)
-
-    real(kind=r8), intent(in) :: v(np,np)
-    type (derivative_t)         :: deriv
-    real(kind=r8) :: p(nc,nc)
-
-    ! Local
-    integer i
-    integer j
-    integer l
-
-    real(kind=r8)  sumx00,sumx01
-    real(kind=r8)  sumx10,sumx11
-    real(kind=r8)  vtemp(np,nc)
-
-    do j=1,np
-       do l=1,nc
-          sumx00=0.0d0
-!DIR$ UNROLL(NP)
-          do i=1,np
-             sumx00 = sumx00 + deriv%Cfvm(i,l  )*v(i,j  )
-          enddo
-          vtemp(j  ,l) = sumx00
-        enddo
-    enddo
-    do j=1,nc
-       do i=1,nc
-          sumx00=0.0d0
-!DIR$ UNROLL(NP)
-          do l=1,np
-             sumx00 = sumx00 + deriv%Cfvm(l,j  )*vtemp(l,i)
-          enddo
-          p(i  ,j  ) = sumx00
-       enddo
-    enddo
-  end subroutine interpolate_gll2fvm_points
-!  ================================================
-!  interpolate_gll2fvm_corners:
-!
-!  shape funtion interpolation from data on GLL grid to physics grid
-!
-!  ================================================
-  subroutine interpolate_gll2fvm_corners(v,deriv,p)
-
-    real(kind=r8), intent(in) :: v(np,np)
-    type (derivative_t), intent(in) :: deriv
-    real(kind=r8) :: p(nc+1,nc+1)
-
-    ! Local
-    integer i
-    integer j
-    integer l
-
-    real(kind=r8)  sumx00,sumx01
-    real(kind=r8)  sumx10,sumx11
-    real(kind=r8)  vtemp(np,nc+1)
-
-    do j=1,np
-       do l=1,nc+1
-          sumx00=0.0d0
-!DIR$ UNROLL(NP)
-          do i=1,np
-             sumx00 = sumx00 + deriv%Mfvm(i,l  )*v(i,j  )
-          enddo
-          vtemp(j  ,l) = sumx00
-        enddo
-    enddo
-    do j=1,nc+1
-       do i=1,nc+1
-          sumx00=0.0d0
-!DIR$ UNROLL(NP)
-          do l=1,np
-             sumx00 = sumx00 + deriv%Mfvm(l,j  )*vtemp(l,i)
-          enddo
-          p(i  ,j  ) = sumx00
-       enddo
-    enddo
-  end subroutine interpolate_gll2fvm_corners
-
 
 !  ================================================
 !  remap_phys2gll:

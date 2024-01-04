@@ -29,25 +29,15 @@ module dimensions_mod
   integer, parameter         :: ntrac_d=4          ! fvm tracers
 #endif
 
-#ifdef _PRIM
   integer, parameter, public :: nvar = 4 ! FI # dependent variables 
-#else
-  integer, parameter, public :: nvar = 3 ! FI # dependent variables 
-#endif
-
  
   integer, parameter, public :: np = NP
   integer, parameter, public :: nc  = NC
 
-  integer         :: ntrac = 0
   integer         :: qsize = 0
 
-  ! fvm dimensions:
-  integer, parameter, public :: ngpc=2       !number of Gausspoints for the fvm integral approximation  
   integer, parameter, public :: nhe=1        !Max. Courant number
   integer, parameter, public :: nhr=2        !halo width needed for reconstruction - phl
-  integer, parameter, public :: nht=nhe+nhr  !total halo width where reconstruction is needed (nht<=nc) - phl
-                                             !(different from halo needed for elements on edges and corners
 !  integer, parameter, public :: ns=3         !quadratic halo interpolation - recommended setting for nc=3
 !  integer, parameter, public :: ns=4         !cubic halo interpolation     - recommended setting for nc=4
   integer, parameter, public :: ns=NC
@@ -71,7 +61,7 @@ module dimensions_mod
   integer, public  :: max_neigh_edges               = 8 !4 + 4*max_corner_elem
 
 
-  public :: qsize,qsize_d,ntrac_d,ntrac
+  public :: qsize,qsize_d,ntrac_d
 
   integer, public :: ne
   integer, public :: nelem       ! total number of elements

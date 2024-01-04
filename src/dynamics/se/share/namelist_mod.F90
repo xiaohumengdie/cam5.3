@@ -28,7 +28,6 @@ module namelist_mod
        runtype,       &
        integration,   &       ! integration method
        tracer_advection_formulation, &   ! conservation or non-conservation formulaton
-       use_semi_lagrange_transport , &   ! conservation or non-conservation formulaton
        tstep_type, &
        cubed_sphere_map, &
        compute_mean_flux, &
@@ -80,14 +79,13 @@ module namelist_mod
        maxits,        &
        tol,           &
        debug_level,   &
-       vert_remap_q_alg, &
-       test_cfldep
+       vert_remap_q_alg
       
 
   !-----------------
   use thread_mod, only : omp_get_max_threads, max_num_threads, horz_num_threads, vert_num_threads, tracer_num_threads
   !-----------------
-  use dimensions_mod, only : ne, np, nnodes, nmpi_per_node, npart, ntrac, ntrac_d, qsize, qsize_d, set_mesh_dimensions
+  use dimensions_mod, only : ne, np, nnodes, nmpi_per_node, npart, ntrac_d, qsize, qsize_d, set_mesh_dimensions
   !-----------------
   use time_mod, only : nsplit, smooth, phys_tscale
   !-----------------
@@ -160,7 +158,6 @@ module namelist_mod
                      accumstop,     &       ! model day to stop  accumulating state variables
                      integration,   &       ! integration method
                      tracer_advection_formulation, &
-                     use_semi_lagrange_transport , &
                      tstep_type, &
                      compute_mean_flux, &
                      cubed_sphere_map, &
@@ -192,8 +189,7 @@ module namelist_mod
                      u_perturb,     &
                      rotate_grid,   &
                      mesh_file,     &               ! Name of mesh file
-                     vert_remap_q_alg, &
-                     test_cfldep                  ! fvm: test shape of departure grid cell and cfl number
+                     vert_remap_q_alg
 
     namelist  /ctl_nl/ SE_NSPLIT,  &       ! number of dynamics steps per physics timestep
                        se_phys_tscale, &
@@ -268,7 +264,6 @@ module namelist_mod
 #ifdef _PRIMDG
     tracer_advection_formulation  = TRACERADV_UGRADQ
 #endif
-    use_semi_lagrange_transport   = .false.
 
 
     ! =======================
@@ -519,8 +514,6 @@ module namelist_mod
 
     call MPI_bcast( ne        ,1,MPIinteger_t,par%root,par%comm,ierr)
     call MPI_bcast(qsize     ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(ntrac     ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(test_cfldep,1,MPIlogical_t,par%root,par%comm,ierr)
 
 
     call MPI_bcast(sub_case ,1,MPIinteger_t,par%root,par%comm,ierr)
@@ -568,7 +561,6 @@ module namelist_mod
     call MPI_bcast(integration,MAX_STRING_LEN,MPIChar_t ,par%root,par%comm,ierr)
     call MPI_bcast(mesh_file,MAX_FILE_LEN,MPIChar_t ,par%root,par%comm,ierr)
     call MPI_bcast(tracer_advection_formulation,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(use_semi_lagrange_transport ,1,MPIlogical_t,par%root,par%comm,ierr)
     call MPI_bcast(tstep_type,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(compute_mean_flux,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(cubed_sphere_map,1,MPIinteger_t ,par%root,par%comm,ierr)
@@ -658,10 +650,6 @@ module namelist_mod
     endif
 #endif
 
-    if (use_semi_lagrange_transport .and. rsplit == 0) then
-       call abortmp('The semi-Lagrange Transport option requires 0 < rsplit')
-    end if
-
 !=======================================================================================================!
     nmpi_per_node=1
     call MPI_bcast(interpolate_analysis, 7,MPIlogical_t,par%root,par%comm,ierr)
@@ -725,7 +713,6 @@ module namelist_mod
        write(iulog,*)'readnl: useframes     = ',useframes
        write(iulog,*)'readnl: nnodes        = ',nnodes
        write(iulog,*)'readnl: npart         = ',npart
-       write(iulog,*)'readnl: test_cfldep   = ',test_cfldep
 
        print *
        write(iulog,*)"readnl: integration   = ",trim(integration)
@@ -736,7 +723,6 @@ module namelist_mod
           write(iulog,*)"readnl: rk_stage_user   = ",rk_stage_user
        endif
        write(iulog,*)"readnl: tracer_advection_formulation  = ",tracer_advection_formulation
-       write(iulog,*)"readnl: use_semi_lagrange_transport   = ",use_semi_lagrange_transport
        write(iulog,*)"readnl: tstep_type    = ",tstep_type
        write(iulog,*)"readnl: vert_remap_q_alg  = ",vert_remap_q_alg
        write(iulog,*)"readnl: se_nsplit         = ", NSPLIT

@@ -102,7 +102,6 @@ module edge_mod
 !    *unpack* stage (not sure why)
 !
 ! The edge orientation is set at startup.  The corner orientation is computed
-! at run time, via the call to compute_ghost_corner_orientation()
 ! This routine only works for meshes with at most 1 corner element.  It's
 ! not called and the corner orientation flag is not set for unstructured meshes
 
@@ -164,7 +163,6 @@ module edge_mod
 
 
 ! routines which including element edge data  
-! (used for FVM arrays where edge data is not shared by neighboring elements)
 ! these routines pack/unpack element data with user specified halo size
 !
 ! THESE ROUTINES SHOULD BE MERGED 

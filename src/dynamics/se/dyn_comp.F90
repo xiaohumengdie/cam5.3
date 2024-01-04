@@ -10,7 +10,6 @@ Module dyn_comp
   use time_manager, only: is_first_step
   use spmd_utils,  only : iam, npes_cam => npes
   use pio,         only: file_desc_t
-  use fvm_control_volume_mod, only : fvm_struct
 
   implicit none
   private
@@ -28,12 +27,10 @@ Module dyn_comp
 
   type dyn_import_t
      type (element_t), pointer :: elem(:) => null()
-     type (fvm_struct), pointer :: fvm(:) => null()
   end type dyn_import_t
 
   type dyn_export_t
      type (element_t), pointer :: elem(:) => null()
-     type (fvm_struct), pointer :: fvm(:) => null()
   end type dyn_export_t
   type (hvcoord_t), public  :: hvcoord
   integer, parameter  ::  DYN_RUN_SUCCESS           = 0
@@ -81,7 +78,7 @@ CONTAINS
     use ref_pres,            only: ref_pres_init
 
     use pmgrid,              only: dyndecomp_set
-    use dyn_grid,            only: dyn_grid_init, fvm, elem, get_dyn_grid_parm,&
+    use dyn_grid,            only: dyn_grid_init, elem, get_dyn_grid_parm,&
                                    set_horiz_grid_cnt_d
     use rgrid,               only: fullgrid
     use spmd_utils,          only: mpi_integer, mpicom, mpi_logical
@@ -168,12 +165,10 @@ CONTAINS
     endif
 #endif
     if(iam < par%nprocs) then
-       call prim_init1(elem,fvm,par,TimeLevel)
+       call prim_init1(elem,par,TimeLevel)
 
        dyn_in%elem => elem
        dyn_out%elem => elem
-       dyn_in%fvm => fvm
-       dyn_out%fvm => fvm
     
        call set_horiz_grid_cnt_d(GlobalUniqueCols)
 
@@ -258,7 +253,6 @@ CONTAINS
     type (dyn_import_t), intent(inout) :: dyn_in
 
     type(element_t),    pointer :: elem(:)
-    type(fvm_struct), pointer :: fvm(:)
 
     integer :: ithr, nets, nete, ie, k
     real(r8), parameter :: Tinit=300.0_r8
@@ -266,7 +260,6 @@ CONTAINS
     type(hybrid_t) :: hybrid
 
     elem  => dyn_in%elem
-    fvm => dyn_in%fvm
 
     dyn_ps0=ps0
     hvcoord%hyam=hyam
@@ -339,7 +332,7 @@ CONTAINS
           ! new run, scale mass to value given in namelist, if needed
           call prim_set_mass(elem, TimeLevel,hybrid,hvcoord,nets,nete)
        endif
-       call prim_init2(elem,fvm,hybrid,nets,nete, TimeLevel, hvcoord)
+       call prim_init2(elem,hybrid,nets,nete, TimeLevel, hvcoord)
        !
        ! This subroutine is used to create nc_topo files, if requested
        ! 
@@ -393,7 +386,7 @@ CONTAINS
 
        do n=1,se_nsplit
           ! forward-in-time RK, with subcycling
-          call prim_run_subcycle(dyn_state%elem,dyn_state%fvm,hybrid,nets,nete,&
+          call prim_run_subcycle(dyn_state%elem,hybrid,nets,nete,&
                tstep, TimeLevel, hvcoord, n)
        end do
     end if
