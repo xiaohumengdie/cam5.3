@@ -19,7 +19,6 @@ module interpolate_mod
   use cube_mod,               only : convert_gbl_index, dmap, ref2sphere
   use mesh_mod,               only : MeshUseMeshFile
   use control_mod,            only : cubed_sphere_map
-  use edgetype_mod, only : ghostbuffertr_t
 
   implicit none
   private
@@ -102,7 +101,6 @@ module interpolate_mod
 
   ! static data, used by bilin_phys2gll()
   ! shared by all threads.  only allocate if subroutine will be used
-  type (ghostBuffertr_t)                      :: ghostbuf_tr
   integer  :: nphys_init=0
   integer  :: index_l(np),index_r(np)
   real(kind=real_kind),allocatable :: weights(:,:,:,:,:) ! np,np,2,2,nelemd

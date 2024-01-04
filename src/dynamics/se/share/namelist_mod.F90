@@ -69,7 +69,7 @@ module namelist_mod
   !-----------------
   use thread_mod, only : omp_get_max_threads, max_num_threads, horz_num_threads, vert_num_threads, tracer_num_threads
   !-----------------
-  use dimensions_mod, only : ne, np, nnodes, nmpi_per_node, npart, ntrac_d, qsize, qsize_d, set_mesh_dimensions
+  use dimensions_mod, only : ne, np, nnodes, nmpi_per_node, npart, qsize, qsize_d, set_mesh_dimensions
   !-----------------
   use time_mod, only : nsplit, smooth, phys_tscale
   !-----------------

@@ -66,7 +66,7 @@ contains
     use hybvcoord_mod,     only: hvcoord_t
     use hybrid_mod,        only: hybrid_t
     use time_mod,          only: TimeLevel_t,  timelevel_qdp
-    use dimensions_mod,    only: nlevp, nvar
+    use dimensions_mod,    only: nlevp
     use bndry_mod, only : bndry_exchangev
     use edgetype_mod, only : EdgeBuffer_t
     use edge_mod, only : edgevpack, edgevunpack, initEdgeBuffer

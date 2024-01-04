@@ -1,36 +1,11 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module dimensions_mod
-#ifdef CAM
-#ifdef FVM_TRACERS
-  use constituents, only : ntrac_d=>pcnst ! _EXTERNAL
-#else
-  use constituents, only : qsize_d=>pcnst ! _EXTERNAL
-#endif
-#endif
+  use shr_kind_mod, only: r8=>shr_kind_r8
+  use constituents, only: qsize_d=>pcnst ! _EXTERNAL
+
   implicit none
   private
 
 ! set MAX number of tracers.  actual number of tracers is a run time argument  
-#ifdef CAM
-#ifdef FVM_TRACERS
-  integer, parameter         :: qsize_d = 1        ! SE tracers  
-#else
-  integer, parameter         :: ntrac_d = 0        ! fvm tracers
-#endif
-#else
-#ifdef QSIZE_D
-  integer, parameter         :: qsize_d=QSIZE_D    ! SE tracers  
-#else
-  integer, parameter         :: qsize_d=4          ! SE tracers: default is 4
-#endif
-  integer, parameter         :: ntrac_d=4          ! fvm tracers
-#endif
-
-  integer, parameter, public :: nvar = 4 ! FI # dependent variables 
- 
   integer, parameter, public :: np = NP
   integer, parameter, public :: nc  = NC
 
@@ -49,11 +24,6 @@ module dimensions_mod
   integer, parameter, public :: nlev=PLEV
   integer, parameter, public :: nlevp=nlev+1
 
-
-!  params for a mesh 
-!  integer, public, parameter :: max_elements_attached_to_node = 7
-!  integer, public, parameter :: s_nv = 2*max_elements_attached_to_node 
-
   !default for non-refined mesh (note that these are *not* parameters now)
   integer, public  :: max_elements_attached_to_node = 4
   integer, public  :: s_nv = 6
@@ -61,7 +31,7 @@ module dimensions_mod
   integer, public  :: max_neigh_edges               = 8 !4 + 4*max_corner_elem
 
 
-  public :: qsize,qsize_d,ntrac_d
+  public :: qsize,qsize_d
 
   integer, public :: ne
   integer, public :: nelem       ! total number of elements

@@ -800,7 +800,7 @@ module prim_advection_mod
   use control_mod, only        : hypervis_order, &
         statefreq, moisture, TRACERADV_TOTAL_DIVERGENCE, TRACERADV_UGRADQ, &
         nu_q, nu_p, limiter_option, hypervis_subcycle_q, rsplit
-  use edgetype_mod, only       : EdgeBuffer_t, ghostbuffer3D_t
+  use edgetype_mod, only       : EdgeBuffer_t
   use edge_mod, only           : edgevpack, edgerotate, edgevunpack, initedgebuffer, initedgesbuffer, edgevunpackmin
   use hybrid_mod, only         : hybrid_t
   use bndry_mod, only          : bndry_exchangev
@@ -819,7 +819,6 @@ module prim_advection_mod
   public :: vertical_remap
 
   type (EdgeBuffer_t) :: edgeAdv, edgeAdvp1, edgeAdvQminmax, edgeAdv1,  edgeveloc
-  type (ghostBuffer3D_t)   :: ghostbuf_tr
 
   integer,parameter :: DSSeta = 1
   integer,parameter :: DSSomega = 2
