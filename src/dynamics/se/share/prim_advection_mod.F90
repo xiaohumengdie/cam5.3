@@ -794,11 +794,10 @@ module prim_advection_mod
   use derivative_mod, only     : gradient, vorticity, gradient_wk, derivative_t, divergence, &
                                  gradient_sphere, divergence_sphere
   use element_mod, only        : element_t
-  use filter_mod, only         : filter_t, filter_P
   use hybvcoord_mod, only      : hvcoord_t
   use time_mod, only           : TimeLevel_t, smooth, TimeLevel_Qdp
   use prim_si_mod, only        : preq_pressure
-  use control_mod, only        : integration, test_case, filter_freq_advection,  hypervis_order, &
+  use control_mod, only        : hypervis_order, &
         statefreq, moisture, TRACERADV_TOTAL_DIVERGENCE, TRACERADV_UGRADQ, &
         nu_q, nu_p, limiter_option, hypervis_subcycle_q, rsplit
   use edgetype_mod, only       : EdgeBuffer_t, ghostbuffer3D_t
@@ -886,20 +885,19 @@ contains
     call derivinit(deriv(hybrid%ithr))
   end subroutine Prim_Advec_Init2
 
-  subroutine Prim_Advec_Tracers_remap( elem , deriv , hvcoord , flt , hybrid , dt , tl , nets , nete )
+  subroutine Prim_Advec_Tracers_remap( elem , deriv , hvcoord , hybrid , dt , tl , nets , nete )
     implicit none
     type (element_t)     , intent(inout) :: elem(:)
     type (derivative_t)  , intent(in   ) :: deriv
     type (hvcoord_t)     , intent(in   ) :: hvcoord
-    type (filter_t)      , intent(in   ) :: flt
     type (hybrid_t)      , intent(in   ) :: hybrid
     real(kind=real_kind) , intent(in   ) :: dt
     type (TimeLevel_t)   , intent(inout) :: tl
     integer              , intent(in   ) :: nets
     integer              , intent(in   ) :: nete
 
+    call Prim_Advec_Tracers_remap_rk2( elem , deriv , hvcoord , hybrid , dt , tl , nets , nete )
 
-    call Prim_Advec_Tracers_remap_rk2( elem , deriv , hvcoord , flt , hybrid , dt , tl , nets , nete )
   end subroutine Prim_Advec_Tracers_remap
 
 !-----------------------------------------------------------------------------
@@ -927,7 +925,7 @@ contains
 !
 !-----------------------------------------------------------------------------
 !-----------------------------------------------------------------------------
-  subroutine Prim_Advec_Tracers_remap_rk2( elem , deriv , hvcoord , flt , hybrid , dt , tl , nets , nete )
+  subroutine Prim_Advec_Tracers_remap_rk2( elem , deriv , hvcoord, hybrid , dt , tl , nets , nete )
     use perf_mod      , only : t_startf, t_stopf            ! _EXTERNAL
     use derivative_mod, only : divergence_sphere
     use control_mod   , only : vert_remap_q_alg, qsplit
@@ -935,7 +933,6 @@ contains
     type (element_t)     , intent(inout) :: elem(:)
     type (derivative_t)  , intent(in   ) :: deriv
     type (hvcoord_t)     , intent(in   ) :: hvcoord
-    type (filter_t)      , intent(in   ) :: flt
     type (hybrid_t)      , intent(in   ) :: hybrid
     real(kind=real_kind) , intent(in   ) :: dt
     type (TimeLevel_t)   , intent(inout) :: tl
@@ -2040,7 +2037,6 @@ contains
         ttmp(:,:,:,1)=elem(ie)%state%v(:,:,1,:,np1)*dp_star
         ttmp(:,:,:,2)=elem(ie)%state%v(:,:,2,:,np1)*dp_star
         call remap1(ttmp,np,2,dp_star,dp)
-!        call remap1_nofilter(ttmp,np,2,dp_star,dp)
         elem(ie)%state%v(:,:,1,:,np1)=ttmp(:,:,:,1)/dp
         elem(ie)%state%v(:,:,2,:,np1)=ttmp(:,:,:,2)/dp
 #ifdef REMAP_TE
