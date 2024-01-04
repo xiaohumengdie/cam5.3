@@ -75,17 +75,30 @@ contains
 
 
 
+
+
+
+
+
+
+
+
+
     ! remaining edge buffers can share %buf and %receive with edgeAdvQ3
     ! (This is done through the optional 1D pointer arguments.)
     call initEdgeBuffer(par,edgeAdvp1,elem,qsize*nlev + nlev)
+
     call initEdgeBuffer(par,edgeAdv,elem,qsize*nlev)
+
+    ! This is a different type of buffer pointer allocation
+    ! used for determine the minimum and maximum value from
+    ! neighboring  elements
+    call initEdgeSBuffer(par,edgeAdvQminmax,elem,qsize*nlev*2)
+
+
     call initEdgeBuffer(par,edgeAdv1,elem,nlev)
     call initEdgeBuffer(par,edgeveloc,elem,2*nlev)
 
-    ! This is a different type of buffer pointer allocation 
-    ! used for determine the minimum and maximum value from 
-    ! neighboring  elements
-    call initEdgeSBuffer(par,edgeAdvQminmax,elem,qsize*nlev*2) 
 
     ! Don't actually want these saved, if this is ever called twice.
     nullify(buf_ptr)
@@ -180,7 +193,7 @@ contains
     type (derivative_t)  , intent(in   ) :: deriv
     type (hvcoord_t)     , intent(in   ) :: hvcoord
     type (hybrid_t)      , intent(in   ) :: hybrid
-    real(kind=r8)        , intent(in   ) :: dt
+    real(kind=r8) , intent(in   ) :: dt
     type (TimeLevel_t)   , intent(inout) :: tl
     integer              , intent(in   ) :: nets
     integer              , intent(in   ) :: nete
@@ -217,8 +230,8 @@ contains
         gradQ(:,:,2)=elem(ie)%derived%vn0(:,:,2,k)
         ! elem(ie)%derived%divdp(:,:,k) = divergence_sphere(gradQ,deriv,elem(ie))
         call divergence_sphere(gradQ,deriv,elem(ie),elem(ie)%derived%divdp(:,:,k))
+        elem(ie)%derived%divdp_proj(:,:,k) = elem(ie)%derived%divdp(:,:,k)
       enddo
-      elem(ie)%derived%divdp_proj(:,:,:) = elem(ie)%derived%divdp(:,:,:)
     enddo
 
 
@@ -276,7 +289,7 @@ contains
           do i=1,np
            elem(ie)%state%Qdp(i,j,k,q,np1_qdp) =               &
                ( elem(ie)%state%Qdp(i,j,k,q,n0_qdp) + &
-               (rkstage-1)*elem(ie)%state%Qdp(i,j,k,q,np1_qdp) ) / rkstage
+               (rkstage-1)*elem(ie)%state%Qdp(i,j,k,q,np1_qdp) ) * rrkstage
           enddo
           enddo
         enddo
@@ -320,14 +333,14 @@ contains
   integer              , intent(in   )         :: rhs_multiplier
 
   ! local
-  real(kind=r8), dimension(np,np                       ) :: divdp, dpdiss
-  real(kind=r8), dimension(np,np                       ) :: div
-  real(kind=r8), dimension(np,np,nlev                  ) :: dpdissk
+  real(kind=r8), dimension(np,np                       ) :: dpdiss
+  real(kind=r8), dimension(np,np,nlev)                   :: dpdissk
   real(kind=r8), dimension(np,np,2                     ) :: gradQ
   real(kind=r8), dimension(np,np,2,nlev                ) :: Vstar
   real(kind=r8), dimension(np,np  ,nlev                ) :: Qtens
-  real(kind=r8), dimension(np,np  ,nlev                ) :: dp,dp_star
+  real(kind=r8), dimension(np,np  ,nlev                ) :: dp
   real(kind=r8), dimension(np,np  ,nlev,qsize,nets:nete) :: Qtens_biharmonic
+  real(kind=r8), dimension(np,np)                        :: div
   real(kind=r8), pointer, dimension(:,:,:)               :: DSSvar
   real(kind=r8) :: dp0(nlev),qmin_val(nlev),qmax_val(nlev)
   integer :: ie,q,i,j,k, kptr
@@ -386,10 +399,10 @@ contains
         do j=1,np
         do i=1,np
           dp(i,j,k) = elem(ie)%derived%dp(i,j,k) - rhs_multiplier*dt*elem(ie)%derived%divdp_proj(i,j,k)
-        do q = 1, qsize
-              Qtens_biharmonic(i,j,k,q,ie) = elem(ie)%state%Qdp(i,j,k,q,n0_qdp)/dp(i,j,k)
-            enddo
+          do q = 1, qsize
+            Qtens_biharmonic(i,j,k,q,ie) = elem(ie)%state%Qdp(i,j,k,q,n0_qdp)/dp(i,j,k)
           enddo
+        enddo
         enddo
       enddo
 
@@ -440,7 +453,7 @@ contains
             enddo
             enddo
 
-          do q = qbeg,qend
+            do q = qbeg,qend
               ! NOTE: divide by dp0 since we multiply by dp0 below
               do j=1,np
               do i=1,np
@@ -523,27 +536,49 @@ contains
       enddo
       enddo
     enddo
+    if ( limiter_option == 8) then
+        ! Note that the term dpdissk is independent of Q
+        do k = kbeg, kend
+          ! UN-DSS'ed dp at timelevel n0+1:
+          do j=1,np
+          do i=1,np
+             dpdissk(i,j,k) = dp(i,j,k) - dt * elem(ie)%derived%divdp(i,j,k)
+          enddo
+          enddo
+          if ( nu_p > 0 .and. rhs_viss /= 0 ) then
+            ! add contribution from UN-DSS'ed PS dissipation
+!            dpdiss(:,:) = ( hvcoord%hybi(k+1) - hvcoord%hybi(k) ) *
+!            elem(ie)%derived%psdiss_biharmonic(:,:)
+
+
+            do j=1,np
+            do i=1,np
+               dpdiss(i,j) = elem(ie)%derived%dpdiss_biharmonic(i,j,k)
+               dpdissk(i,j,k) = dpdissk(i,j,k) - rhs_viss * dt * nu_q * dpdiss(i,j) / elem(ie)%spheremp(i,j)
+            enddo
+            enddo
+          endif
+        enddo
+    endif  ! limiter == 8
+
 
     ! advance Qdp
-!    do q = 1 , qsize
-!      do k = 1 , nlev  !  dp_star used as temporary instead of divdp (AAM)
     do q = qbeg, qend
       do k = kbeg, kend
         ! div( U dp Q),
-
         do j=1,np
         do i=1,np
            gradQ(i,j,1) = Vstar(i,j,1,k) * elem(ie)%state%Qdp(i,j,k,q,n0_qdp)
            gradQ(i,j,2) = Vstar(i,j,2,k) * elem(ie)%state%Qdp(i,j,k,q,n0_qdp)
         enddo
         enddo
-        ! dp_star(:,:,k) = divergence_sphere( gradQ , deriv , elem(ie) )
 
-        call divergence_sphere( gradQ , deriv , elem(ie),dp_star(:,:,k) )
+
+        call divergence_sphere( gradQ , deriv , elem(ie),div )
 
         do j=1,np
           do i=1,np
-            Qtens(i,j,k) = elem(ie)%state%Qdp(i,j,k,q,n0_qdp) - dt * dp_star(i,j,k)
+            Qtens(i,j,k) = elem(ie)%state%Qdp(i,j,k,q,n0_qdp) - dt * div(i,j)
           enddo
         enddo
 
@@ -558,28 +593,9 @@ contains
       enddo
 
       if ( limiter_option == 8) then
-        do k = 1 , nlev  ! Loop index added (AAM)
-          ! UN-DSS'ed dp at timelevel n0+1:
-          do j=1,np
-            do i=1,np
-              dp_star(i,j,k) = dp(i,j,k) - dt * elem(ie)%derived%divdp(i,j,k)
-            enddo
-          enddo
-
-          if ( nu_p > 0 .and. rhs_viss /= 0 ) then
-            ! add contribution from UN-DSS'ed PS dissipation
-!            dpdiss(:,:) = ( hvcoord%hybi(k+1) - hvcoord%hybi(k) ) * elem(ie)%derived%psdiss_biharmonic(:,:)
-           do j=1,np
-              do i=1,np
-                  dpdiss(i,j) = elem(ie)%derived%dpdiss_biharmonic(i,j,k)
-               dp_star(i,j,k) = dp_star(i,j,k) - rhs_viss * dt * nu_q * dpdiss(i,j) / elem(ie)%spheremp(i,j)
-              enddo
-            enddo
-          endif
-        enddo
         ! apply limiter to Q = Qtens / dp_star
         call limiter_optim_iter_full( Qtens(:,:,:) , elem(ie)%spheremp(:,:) , qmin(:,q,ie) , &
-                                                          qmax(:,q,ie) , dp_star(:,:,:))
+                                                          qmax(:,q,ie) , dpdissk)
       endif
 
 
@@ -728,7 +744,7 @@ contains
   !
   !  For correct scaling, dt2 should be the same 'dt2' used in the leapfrog advace
   use dimensions_mod , only : np, nlev
-  use hybrid_mod     , only : hybrid_t
+  use hybrid_mod     , only : hybrid_t!, PrintHybrid
   use hybrid_mod     , only : get_loop_ranges
   use element_mod    , only : element_t
   use derivative_mod , only : derivative_t
@@ -793,13 +809,11 @@ contains
               ( hvcoord%hybi(k+1) - hvcoord%hybi(k) ) * hvcoord%ps0
          dp(:,:,k) = elem(ie)%derived%dp(:,:,k) - dt2*elem(ie)%derived%divdp_proj(:,:,k)
          if (nu_p>0) then
-!            do q = 1 , qsize
             do q = qbeg, qend
                Qtens(:,:,k,q,ie) = elem(ie)%derived%dpdiss_ave(:,:,k)*&
                     elem(ie)%state%Qdp(:,:,k,q,nt_qdp) / dp(:,:,k)
             enddo
          else
-!            do q = 1 , qsize
             do q = qbeg, qend
                Qtens(:,:,k,q,ie) = dp0*elem(ie)%state%Qdp(:,:,k,q,nt_qdp) / dp(:,:,k)
             enddo
