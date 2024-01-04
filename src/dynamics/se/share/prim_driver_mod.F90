@@ -3,16 +3,12 @@ module prim_driver_mod
   use shr_kind_mod,           only: r8=>shr_kind_r8
   use cam_logfile,            only: iulog
   use cam_abortutils,         only: endrun
-  use dimensions_mod,         only: np, nlev, nlevp, nelem, nelemd, nelemdmax, GlobalUniqueCols, qsize, nc,nhc
+  use dimensions_mod,         only: np, nlev, nelem, nelemd, GlobalUniqueCols, qsize, nc,nhc
   use hybrid_mod,             only: hybrid_t
   use derivative_mod,         only: derivative_t
-  use quadrature_mod,         only : quadrature_t, test_gauss, test_gausslobatto, gausslobatto
-  use derivative_mod, only : derivative_t
-  use reduction_mod, only : reductionbuffer_ordered_1d_t, red_min, red_max, &
-         red_sum, red_sum_int, red_flops, initreductionbuffer
-  use element_mod, only : element_t, timelevels,  allocate_element_desc
+  use element_mod,            only: element_t, timelevels, allocate_element_desc
+  use thread_mod ,            only: omp_get_num_threads
   use perf_mod,               only: t_startf, t_stopf
-  use thread_mod, only : omp_get_num_threads
 
   implicit none
   private
@@ -24,16 +20,11 @@ contains
 !=============================================================================!
 
   subroutine prim_init2(elem, hybrid, nets, nete, tl, hvcoord)
-
-
     use parallel_mod,           only: syncmp
     use time_mod,               only: timelevel_t, tstep, phys_tscale, nsplit, TimeLevel_Qdp
-
-
     use control_mod,            only: runtype, topology, rsplit, qsplit, rk_stage_user,         &
                                       nu, nu_q, nu_div, tstep_type, hypervis_subcycle, &
                                       hypervis_subcycle_q
-
     use thread_mod,             only: omp_get_thread_num
     use global_norms_mod,       only: test_global_integral, print_cfl
     use hybvcoord_mod,          only: hvcoord_t
@@ -215,12 +206,7 @@ contains
     use control_mod,            only: statefreq, energy_fixer, ftype, qsplit, rsplit
     use prim_advance_mod,       only: applycamforcing
     use prim_advance_mod,       only: applycamforcing_dynamics
-    use reduction_mod,          only: parallelmax
-    use prim_advection_mod,    only : vertical_remap
-
-
-
-
+    use prim_advection_mod,     only: vertical_remap
 
     type (element_t) , intent(inout) :: elem(:)
 
@@ -231,12 +217,9 @@ contains
     real(kind=r8), intent(in)        :: dt  ! "timestep dependent" timestep
     type (TimeLevel_t), intent(inout):: tl
     integer, intent(in)              :: nsubstep  ! nsubstep = 1 .. nsplit
-    real (kind=r8) :: st, st1, dp, dt_q, dt_remap
-    integer :: ie, t, q,k,i,j,n, n_Q
-    integer :: n0_qdp,np1_qdp,r, nstep_end
 
-
-    real (kind=r8)                          :: maxcflx, maxcfly
+    real(kind=r8)   :: dt_q, dt_remap
+    integer         :: ie, q,k,n0_qdp,np1_qdp,r, nstep_end
     real (kind=r8)  :: dp_np1(np,np)
 
     ! ===================================
@@ -262,38 +245,45 @@ contains
 
     ! initialize dp3d from ps
     if (rsplit>0) then
-    do ie=nets,nete
-       do k=1,nlev
-          elem(ie)%state%dp3d(:,:,k,tl%n0)=&
-               ( hvcoord%hyai(k+1) - hvcoord%hyai(k) )*hvcoord%ps0 + &
-               ( hvcoord%hybi(k+1) - hvcoord%hybi(k) )*elem(ie)%state%ps_v(:,:,tl%n0)
+       do ie=nets,nete
+          do k=1,nlev
+             elem(ie)%state%dp3d(:,:,k,tl%n0)=&
+                  ( hvcoord%hyai(k+1) - hvcoord%hyai(k) )*hvcoord%ps0 + &
+                  ( hvcoord%hybi(k+1) - hvcoord%hybi(k) )*elem(ie)%state%ps_v(:,:,tl%n0)
+          enddo
+          ! DEBUGDP step: ps_v should not be used for rsplit>0 code during prim_step
+          ! vertical_remap.  so to this for debugging:
+          elem(ie)%state%ps_v(:,:,tl%n0)=-9e9
        enddo
-       ! DEBUGDP step: ps_v should not be used for rsplit>0 code during prim_step
-       ! vertical_remap.  so to this for debugging:
-       elem(ie)%state%ps_v(:,:,tl%n0)=-9e9
-    enddo
     endif
 
-
-    ! loop over rsplit vertically lagrangian timesteps
-    call prim_step(elem, hybrid,nets,nete, dt, tl, hvcoord)
-    do r=2,rsplit
-       call TimeLevel_update(tl,"leapfrog")
-       call prim_step(elem, hybrid,nets,nete, dt, tl, hvcoord)
+    do r=1,rsplit
+      if (r.ne.1) call TimeLevel_update(tl,"leapfrog")
+      call prim_step(elem, hybrid,nets,nete, dt, tl, hvcoord)
     enddo
-    ! defer final timelevel update until after remap and diagnostics
 
+    
+    ! defer final timelevel update until after remap and diagnostics
+    call TimeLevel_Qdp( tl, qsplit, n0_qdp, np1_qdp)
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !
     !  apply vertical remap
     !  always for tracers
-    !  if rsplit>0:  also remap dynamics and compute reference level ps_v
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !compute timelevels for tracers (no longer the same as dynamics)
-    call TimeLevel_Qdp( tl, qsplit, n0_qdp, np1_qdp)
-    call vertical_remap(hybrid,elem,hvcoord,dt_remap,tl%np1,np1_qdp,nets,nete)
 
+
+
+
+
+
+
+
+
+
+    call t_startf('vertical_remap')
+    call vertical_remap(hybrid,elem,hvcoord,dt_remap,tl%np1,np1_qdp,nets,nete)
+    call t_stopf('vertical_remap')
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! time step is complete.  update some diagnostic variables:
@@ -339,50 +329,48 @@ contains
     !   u(np1)   undefined
 
 
+
+
+
   end subroutine prim_run_subcycle
 
+
   subroutine prim_step(elem, hybrid,nets,nete, dt, tl, hvcoord)
-!
-!   Take qsplit dynamics steps and one tracer step
-!   for vertically lagrangian option, this subroutine does only the horizontal step
-!
-!   input:
-!       tl%nm1   not used
-!       tl%n0    data at time t
-!       tl%np1   new values at t+dt_q
-!
-!   then we update timelevel pointers:
-!       tl%nm1 = tl%n0
-!       tl%n0  = tl%np1
-!   so that:
-!       tl%nm1   tracers:  t    dynamics:  t+(qsplit-1)*dt
-!       tl%n0    time t + dt_q
-!
-!
-    use hybvcoord_mod, only : hvcoord_t
-    use time_mod, only : TimeLevel_t, timelevel_update, nsplit
-    use control_mod, only: statefreq, ftype, qsplit, nu_p, rsplit
-    use control_mod, only : tracer_transport_type
-    use control_mod, only : tracer_grid_type, TRACER_GRIDTYPE_GLL
-    use prim_advance_mod, only : prim_advance_exp
-    use prim_advection_mod, only : prim_advec_tracers_remap, deriv
-    use reduction_mod, only : parallelmax
-    use time_mod,    only : time_at
+    !
+    !   Take qsplit dynamics steps and one tracer step
+    !   for vertically lagrangian option, this subroutine does only the horizontal step
+    !
+    !   input:
+    !       tl%nm1   not used
+    !       tl%n0    data at time t
+    !       tl%np1   new values at t+dt_q
+    !
+    !   then we update timelevel pointers:
+    !       tl%nm1 = tl%n0
+    !       tl%n0  = tl%np1
+    !   so that:
+    !       tl%nm1   tracers:  t    dynamics:  t+(qsplit-1)*dt
+    !       tl%n0    time t + dt_q
+    !
+    use hybvcoord_mod,          only: hvcoord_t
+    use time_mod,               only: TimeLevel_t, timelevel_update, nsplit
+    use control_mod,            only: statefreq, ftype, qsplit, nu_p, rsplit
+    use prim_advance_mod,       only: prim_advance_exp
+    use prim_advection_mod,     only: prim_advec_tracers_remap, deriv
+    use control_mod,            only: tracer_transport_type, tracer_grid_type, TRACER_GRIDTYPE_GLL
 
-    type (element_t) , intent(inout)        :: elem(:)
+    type (element_t) ,  intent(inout) :: elem(:)
 
-    type (hybrid_t), intent(in)           :: hybrid  ! distributed parallel structure (shared)
+    type (hybrid_t),    intent(in)    :: hybrid  ! distributed parallel structure (shared)
+    type (hvcoord_t),   intent(in)    :: hvcoord         ! hybrid vertical coordinate struct
+    integer,            intent(in)    :: nets  ! starting thread element number (private)
+    integer,            intent(in)    :: nete  ! ending thread element number   (private)
+    real(kind=r8),      intent(in)    :: dt  ! "timestep dependent" timestep
+    type (TimeLevel_t), intent(inout) :: tl
 
-    type (hvcoord_t), intent(in)      :: hvcoord         ! hybrid vertical coordinate struct
 
-    integer, intent(in)                     :: nets  ! starting thread element number (private)
-    integer, intent(in)                     :: nete  ! ending thread element number   (private)
-    real(kind=r8), intent(in)        :: dt  ! "timestep dependent" timestep
-    type (TimeLevel_t), intent(inout)       :: tl
-    real(kind=r8) :: st, st1, dp, dt_q
-    integer :: ie, t, q,k,i,j,n, n_Q
-
-    real (kind=r8)                          :: maxcflx, maxcfly
+    real(kind=r8)  :: dp, dt_q
+    integer        :: ie,t,q,k,i,j,n, n_Q
 
     real (kind=r8) :: dp_np1(np,np)
 
@@ -444,11 +432,7 @@ contains
   enddo
     ! current dynamics state variables:
     !    derived%dp              =  dp at start of timestep
-    !    derived%vstar           =  velocity at start of tracer timestep
     !    derived%vn0             =  mean horiz. flux:   U*dp
-    ! rsplit=0
-    !        state%v(:,:,:,np1)      = velocity on reference levels
-    !        state%ps_v(:,:,:,np1)   = ps
     ! rsplit>0
     !        state%v(:,:,:,np1)      = velocity on lagrangian levels
     !        state%dp3d(:,:,:,np1)   = dp3d
@@ -458,13 +442,13 @@ contains
     ! ===============
     ! Tracer Advection.
     ! in addition, this routine will apply the DSS to:
-    !        derived%eta_dot_dpdn    =  mean vertical velocity (used for remap below)
     !        derived%omega           =
     ! Tracers are always vertically lagrangian.
-    ! For rsplit=0: 
-    !   if tracer scheme needs v on lagrangian levels it has to vertically interpolate
-    !   if tracer scheme needs dp3d, it needs to derive it from ps_v
     ! ===============
+    ! Advect tracers if their count is > 0.
+    ! special case in CAM: if CSLAM tracers are turned on , qsize=1 but this tracer should
+    ! not be advected.  This will be cleaned up when the physgrid is merged into CAM trunk
+    ! Currently advecting all species
     if (tracer_grid_type == TRACER_GRIDTYPE_GLL) then
       call Prim_Advec_Tracers_remap(elem, deriv(hybrid%ithr),hvcoord,hybrid,&
            dt_q,tl,nets,nete)
