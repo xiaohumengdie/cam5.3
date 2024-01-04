@@ -177,9 +177,6 @@ module control_mod
   integer, public :: smooth_sgh_numcycle = 0   ! 0 = disabled
   real (kind=real_kind), public :: smooth_phis_nudt = 0
 
-
-  integer, public :: prescribed_wind=0    ! fix the velocities?
-
   real (kind=real_kind), public :: initial_total_mass = 0    ! initial perturbation in JW test case
   real (kind=real_kind), public :: u_perturb   = 0         ! initial perturbation in JW test case
   integer, public, parameter :: west  = 1

@@ -1,12 +1,7 @@
-#ifdef HAVE_CONFIG_H  
-#include "config.h"
-#endif
-
 ! ===========================================
 ! Module to support hybrid programming model
 ! hybrid_t is assumed to be a private struct
 ! ===========================================
-
 module hybrid_mod
 
 use parallel_mod  , only : parallel_t, copy_par
@@ -16,13 +11,6 @@ use dimensions_mod, only : nlev, qsize, ntrac
 
 implicit none
 private
-
-  type, private :: hybridold_t
-     type (parallel_t)    :: par
-     integer              :: ithr
-     integer              :: nthreads
-     logical              :: masterthread
-  end type
 
   type, private :: hybrid_p
      integer :: ibeg, iend
@@ -50,7 +38,6 @@ private
   integer :: region_num_threads
   character(len=64) :: region_name
 
-  private :: hybrid_create
   public :: PrintHybrid
   public :: set_region_num_threads
   private :: set_loop_ranges
@@ -58,31 +45,16 @@ private
   public :: init_loop_ranges
   public :: threadOwnsTracer, threadOwnsVertlevel
   public :: config_thread_region
-  public :: get_number_threads
 
   interface config_thread_region 
       module procedure config_thread_region_par
       module procedure config_thread_region_hybrid
   end interface
   interface PrintHybrid 
-!      module procedure PrintHybridold
       module procedure PrintHybridnew
   end interface
 
 contains
-
-  subroutine PrintHybridold(hybt,hybp,vname)
-    type (hybridold_t) :: hybt
-    type (hybrid_p) :: hybp
-    character(len=*) :: vname
-     
-    write(*,21) vname, hybt%par%rank, hybt%ithr, hybt%nthreads, &
-                hybp%ibeg, hybp%iend,hybp%kbeg,hybp%kend, &
-                hybp%qbeg, hybp%qend
-21  format('PrintHybrid: (',a, ', rank: ',i8, ', ithrd: ',i4,',  nthreads: ',i4, &
-           ', i{beg,end}: ',2(i4),', k{beg,end}: ',2(i4),', q{beg,end}: ',2(i4),')')
-
-  end subroutine PrintHybridold
 
   subroutine PrintHybridnew(hybt,vname)
     type (hybrid_t) :: hybt
@@ -97,24 +69,6 @@ contains
   end subroutine PrintHybridnew
 
   
-  function hybrid_create(par,ithr,nthreads) result(hybrid)
-      type (parallel_t) , intent(in) :: par
-      integer           , intent(in) :: ithr
-      integer, optional , intent(in) :: nthreads
-      type (hybridold_t)                :: hybrid
-
-      hybrid%par      = par      ! relies on parallel_mod copy constructor
-      hybrid%ithr     = ithr     
-      if ( present(nthreads) ) then
-        hybrid%nthreads = nthreads
-      else
-        hybrid%nthreads = region_num_threads
-      endif
-
-      hybrid%masterthread = (par%masterproc .and. ithr==0)
-
-  end function hybrid_create 
-
   function config_thread_region_hybrid(old,region_name) result(new)
      type (hybrid_t), intent(in) :: old
      character(len=*), intent(in) :: region_name
@@ -574,40 +528,5 @@ contains
   end_index = beg(ipe+1) - 1
 
   end subroutine create_work_pool
-
-  subroutine get_number_threads(maxthreads)
-  use thread_mod, only : omp_get_nested
-
-    integer, INTENT(OUT) :: maxthreads
-
-    character(len=32) :: instring, string1, string2
-    integer :: thr1=1, thr2=1
-
-    if ( omp_get_nested() ) then
-      call GET_ENVIRONMENT_VARIABLE('OMP_NUM_THREADS', instring)
-      call split_string(instring, string1, string2, ',')
-      read (string1,'(I4)') thr1; read (string2,'(I4)') thr2
-    else
-      call GET_ENVIRONMENT_VARIABLE('OMP_NUM_THREADS', instring)
-      read (instring,'(I4)') thr1
-    endif
-    maxthreads = thr1 * thr2
-
-  end subroutine get_number_threads
-
-  subroutine split_string(instring, string1, string2, delim)
-    character(*), INTENT(INOUT) :: instring
-    character(*), INTENT(IN)    :: delim
-    character(*), INTENT(OUT)   :: string1, string2
-
-    integer :: index
-
-    instring = TRIM(instring)
-
-    index = SCAN(instring,delim)
-    string1 = instring(1:index-1)
-    string2 = instring(index+1:)
-
-  end subroutine split_string
 
 end module hybrid_mod

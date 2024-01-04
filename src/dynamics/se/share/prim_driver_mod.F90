@@ -481,7 +481,7 @@ contains
 #ifndef CAM
     allocate(cm(0:max_num_threads-1))
 #endif
-    call prim_advance_init(par,elem,integration)
+    call prim_advance_init(par,elem)
     call Prim_Advec_Init1(par, elem,max_num_threads)
     if (ntrac>0) then
       call fvm_init1(par,elem)
@@ -810,7 +810,6 @@ contains
     real (kind=real_kind) :: dp_np1(np,np)
     logical :: compute_diagnostics, compute_energy
 
-
     ! ===================================
     ! Main timestepping loop
     ! ===================================
@@ -821,8 +820,6 @@ contains
        dt_remap=dt_q*rsplit   ! rsplit=0 means use eulerian code, not vert. lagrange
        nstep_end = tl%nstep + qsplit*rsplit  ! nstep at end of this routine
     endif
-
-
 
     ! compute diagnostics and energy for STDOUT
     ! compute energy if we are using an energy fixer
@@ -838,8 +835,6 @@ contains
 
     if (compute_diagnostics) &
        call prim_diag_scalars(elem,hvcoord,tl,4,.true.,nets,nete)
-
-
 
 #ifdef CAM
     ! ftype=2  Q was adjusted by physics, but apply u,T forcing here
@@ -957,11 +952,6 @@ contains
     end if
   end subroutine prim_run_subcycle
 
-
-
-
-
-
   subroutine prim_step(elem, fvm, hybrid,nets,nete, dt, tl, hvcoord, compute_diagnostics)
 !
 !   Take qsplit dynamics steps and one tracer step
@@ -988,7 +978,7 @@ contains
     use fvm_mod,     only : fvm_ideal_test, IDEAL_TEST_OFF, IDEAL_TEST_ANALYTICAL_WINDS
     use fvm_mod,     only : fvm_test_type, IDEAL_TEST_BOOMERANG, IDEAL_TEST_SOLIDBODY
     use fvm_bsp_mod, only : get_boomerang_velocities_gll, get_solidbody_velocities_gll
-    use prim_advance_mod, only : prim_advance_exp, overwrite_SEdensity
+    use prim_advance_mod, only : prim_advance_exp
     use prim_advection_mod, only : prim_advec_tracers_remap, prim_advec_tracers_fvm, deriv
     use parallel_mod, only : abortmp
     use reduction_mod, only : parallelmax
@@ -1141,8 +1131,6 @@ contains
              print *
            endif
        endif
-       !overwrite SE density by fvm(ie)%psc
-!        call overwrite_SEdensity(elem,fvm,dt_q,hybrid,nets,nete,tl%np1)
     endif
 
   end subroutine prim_step
@@ -1282,7 +1270,6 @@ contains
     use edge_mod, only : edgevpack, edgevunpack
     use bndry_mod, only : bndry_exchangev
     use derivative_mod, only : derivative_t , laplace_sphere_wk
-    use viscosity_mod, only : biharmonic_wk
     use prim_advance_mod, only : smooth_phis
     use prim_advection_mod, only: deriv
     implicit none

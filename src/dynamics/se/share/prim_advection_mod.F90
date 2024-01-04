@@ -11,56 +11,6 @@
 !#define LIMITER_REWRITE_OPT 1
 #define OVERLAP 1
 
-#if 0
-SUBROUTINES:
-   prim_advec_tracers_remap_rk2()
-      SEM 2D RK2 + monotone remap + hyper viscosity
-      SEM 2D RK2 can use sign-preserving or monotone reconstruction
-
-Notes on Lagrange+REMAP advection
-dynamics will compute mean fluxes, so that (i.e. for qsplit=3)
-
-    dp(t+3)-dp(t) = -3dt div(Udp_sum/3) - 3dt d(eta_dot_dpdn_sum/3)  + 3dt D(dpdiss_sum/3)
-
-Where the floating lagrangian component:
-    dp_star(t+3) = dp(t)  -3dt div(Udp_sum/3)  + 3dt D(dpdiss_sum/3)
-OR:
-    dp_star(t+3) = dp(t+1) + 3dt d( eta_dot_dpdn_ave(t) )
-
-
-For RK2 advection of Q:  (example of 2 stage RK for tracers):   dtq = qsplit*dt
-For consistency, if Q=1
-  dp1  = dp(t)- dtq div[ U1 dp(t)]
-  dp2  = dp1  - dtq div[ U2 dp1  ]  + 2*dtq D( dpdiss_ave )
-  dp*  = (dp(t) + dp2 )/2
-       =  dp(t) - dtq  div[ U1 dp(t) + U2 dp1 ]/2   + dtq D( dpdiss_ave )
-
-so we require:
-  U1 = Udp_ave / dp(t)
-  U2 = Udp_ave / dp1
-
-For tracer advection:
-  Qdp1  = Qdp(t)- dtq div[ U1 Qdp(t)]
-  Qdp2  = Qdp1  - dtq div[ U2 Qdp1  ]  + 2*dtq D( Q dpdiss_ave )
-  Qdp*  = (Qdp(t) + Qdp2 )/2
-       =  Qdp(t) - dtq  div[ U1 Qdp(t) + U2 Qdp1 ]   + dtq D( Q dpdiss_ave )
-
-Qdp1:  limit Q, with Q = Qdp1-before-DSS/(dp1-before-DSS)      with dp1 as computed above
-Qdp2:  limit Q, with Q = Qdp2-before-DSS/(dp2-before-DSS)      with dp2 as computed above
-
-For dissipation: Q = Qdp1-after-DSS / dp1-after-DSS
-
-
-last step:
-  remap Qdp* to Qdp(t+1)   [ dp_star(t+1) -> dp(t+1) ]
-
-
-
-#endif
-
-
-
-
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! Begin GPU remap module  !!
 !! by Rick Archibald, 2010  !!
@@ -124,8 +74,6 @@ subroutine remap_calc_grids( hvcoord , ps , dt , eta_dot_dpdn , p_lag , p_ref , 
 end subroutine remap_calc_grids
 
 !=======================================================================================================!
-
-
 
 subroutine remap1(Qdp,nx,qsize,dp1,dp2)
   ! remap 1 field
@@ -555,7 +503,7 @@ subroutine remap_Q_ppm(Qdp,nx,qsize,dp1,dp2)
   !
   ! output: remaped Qdp, conserving mass
   !
-  use control_mod, only        : prescribed_wind, vert_remap_q_alg
+  use control_mod, only        : vert_remap_q_alg
   implicit none
   integer,intent(in) :: nx,qsize
   real (kind=real_kind), intent(inout) :: Qdp(nx,nx,nlev,qsize)
@@ -854,12 +802,12 @@ module prim_advection_mod
   use prim_si_mod, only        : preq_pressure
   use control_mod, only        : integration, test_case, filter_freq_advection,  hypervis_order, &
         statefreq, moisture, TRACERADV_TOTAL_DIVERGENCE, TRACERADV_UGRADQ, &
-        prescribed_wind, nu_q, nu_p, limiter_option, hypervis_subcycle_q, rsplit
+        nu_q, nu_p, limiter_option, hypervis_subcycle_q, rsplit
   use edgetype_mod, only       : EdgeBuffer_t, ghostbuffer3D_t
   use edge_mod, only           : edgevpack, edgerotate, edgevunpack, initedgebuffer, initedgesbuffer, edgevunpackmin
   use hybrid_mod, only         : hybrid_t
   use bndry_mod, only          : bndry_exchangev
-  use viscosity_mod, only      : biharmonic_wk_scalar, biharmonic_wk_scalar_minmax, neighbor_minmax, &
+  use viscosity_mod, only      : biharmonic_wk_scalar,  neighbor_minmax, &
                                  neighbor_minmax_start, neighbor_minmax_finish
   use perf_mod, only           : t_startf, t_stopf, t_barrierf ! _EXTERNAL
   use parallel_mod, only   : abortmp
@@ -1965,22 +1913,6 @@ end subroutine ALE_parametric_coords
       enddo
 #endif
 
-!      call biharmonic_wk_scalar_minmax( elem , qtens_biharmonic , deriv , edgeAdvQ3 , hybrid , &
-!           nets , nete , qmin(:,:,nets:nete) , qmax(:,:,nets:nete) )
-!      do ie = nets , nete
-!        do k = 1 , nlev 
-!          do q = 1 , qsize
-!            ! note: biharmonic_wk() output has mass matrix already applied. Un-apply since we apply again below:
-!            do j=1,np
-!              do i=1,np
-!                qtens_biharmonic(i,j,k,q,ie) = &
-!                     -rhs_viss*dt*nu_q*dp0(k)*Qtens_biharmonic(i,j,k,q,ie) / elem(ie)%spheremp(i,j)
-!              enddo
-!            enddo
-!          enddo
-!        enddo
-!      enddo
-!
     endif
   endif  ! compute biharmonic mixing term and qmin/qmax
 

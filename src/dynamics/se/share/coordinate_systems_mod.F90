@@ -1,39 +1,39 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module coordinate_systems_mod
+  use shr_kind_mod,     only: r8=>shr_kind_r8
+  use physconst,        only: pi
+  use cam_abortutils,   only: endrun
 
 ! WARNING:  When using this class be sure that you know if the
 ! cubic coordinates are on the unit cube or the [-\pi/4,\pi/4] cube
 ! and if the spherical longitude is in [0,2\pi] or [-\pi,\pi]
-  use kinds, only : real_kind, longdouble_kind
   implicit none
   private
 
-  real(kind=real_kind), public, parameter :: DIST_THRESHOLD= 1.0D-9
-  real(kind=real_kind), parameter :: one=1.0D0, two=2.0D0
+  real(kind=r8), public, parameter :: DIST_THRESHOLD= 1.0e-9_r8
+  real(kind=r8), parameter :: one=1.0_r8
+  real(kind=r8), parameter :: two=2.0_r8
 
   type, public :: cartesian2D_t
-     real(real_kind) :: x             ! x coordinate
-     real(real_kind) :: y             ! y coordinate
+     real(r8) :: x             ! x coordinate
+     real(r8) :: y             ! y coordinate
   end type cartesian2D_t
 
   type, public :: cartesian3D_t
-     real(real_kind) :: x             ! x coordinate
-     real(real_kind) :: y             ! y coordinate
-     real(real_kind) :: z             ! z coordinate
+     real(r8) :: x             ! x coordinate
+     real(r8) :: y             ! y coordinate
+     real(r8) :: z             ! z coordinate
   end type cartesian3D_t
 
   type, public :: spherical_polar_t
-     real(real_kind) :: r             ! radius
-     real(real_kind) :: lon           ! longitude
-     real(real_kind) :: lat           ! latitude
+     real(r8) :: r             ! radius
+     real(r8) :: lon           ! longitude
+     real(r8) :: lat           ! latitude
   end type spherical_polar_t
 
 
   interface assignment ( = )
      module procedure copy_cart2d
+     module procedure copy_spherical_polar
   end interface
 
   interface operator( == )
@@ -65,6 +65,7 @@ module coordinate_systems_mod
   public :: distance
   public :: change_coordinates
   public :: cart2cubedsphere    ! (x,y,z)           -> equal-angle (x,y)
+  public :: cart2cubedsphere_failsafe
   public :: spherical_to_cart   ! (lat,lon)         ->  (x,y,z)
   public :: projectpoint        ! equal-angle (x,y) ->  (lat,lon)
                                 ! should be called cubedsphere2spherical
@@ -75,9 +76,10 @@ module coordinate_systems_mod
 
 ! CE
   public :: cart2cubedspherexy  !  (x,y,z)          -> gnomonic (x,y)
-  public :: cart2spherical      !  gnominic (x,y)   -> (lat,lon) 
+  public :: cart2spherical      !  gnominic (x,y)   -> (lat,lon)
 
   private :: copy_cart2d
+  private :: copy_spherical_polar
   private :: eq_cart2d
   private :: distance_cart2D
   private :: distance_cart2D_v
@@ -98,12 +100,27 @@ contains
   ! ============================================
 
   subroutine copy_cart2d(cart2,cart1)
-    implicit none
+
     type(cartesian2D_t), intent(out) :: cart2
     type(cartesian2D_t), intent(in)  :: cart1
     cart2%x=cart1%x
     cart2%y=cart1%y
   end subroutine copy_cart2d
+
+  ! ============================================
+  ! copy_spherical_polar:
+  !
+  ! Overload assignment operator for spherical_polar_t
+  ! ============================================
+
+  pure subroutine copy_spherical_polar(sph2, sph1)
+
+    type(spherical_polar_t), intent(out) :: sph2
+    type(spherical_polar_t), intent(in)  :: sph1
+    sph2%r   = sph1%r
+    sph2%lat = sph1%lat
+    sph2%lon = sph1%lon
+  end subroutine copy_spherical_polar
 
   ! ============================================
   ! eq_cart2d:
@@ -112,11 +129,11 @@ contains
   ! ============================================
 
   pure function eq_cart2d(cart2,cart1) result(is_same)
-    implicit none
+
     type(cartesian2D_t), intent(in)  :: cart2
     type(cartesian2D_t), intent(in)  :: cart1
 
-    logical :: is_same    
+    logical :: is_same
 
     if (distance(cart1,cart2)<DIST_THRESHOLD) then
        is_same=.true.
@@ -137,7 +154,7 @@ contains
     implicit none
     type(cartesian2D_t), intent(in)           :: cart1
     type(cartesian2D_t), intent(in), optional :: cart2
-    real(real_kind)   :: dist
+    real(r8)   :: dist
 
     if (present(cart2)) then
        dist = SQRT((cart1%x-cart2%x)**2 + &
@@ -153,7 +170,7 @@ contains
     implicit none
     type(cartesian2D_t), intent(in)           :: cart1(:)
     type(cartesian2D_t), intent(in), optional :: cart2(:)
-    real(real_kind)                           :: dist(SIZE(cart1))
+    real(r8)                           :: dist(SIZE(cart1))
 
     integer             :: i
 
@@ -175,7 +192,7 @@ contains
     implicit none
     type(cartesian3D_t), intent(in)          :: cart1
     type(cartesian3D_t), intent(in),optional :: cart2
-    real(real_kind)                          :: dist
+    real(r8)                          :: dist
 
     if (present(cart2)) then
        dist = SQRT((cart1%x-cart2%x)**2 + &
@@ -192,7 +209,7 @@ contains
     implicit none
     type(cartesian3D_t), intent(in)          :: cart1(:)
     type(cartesian3D_t), intent(in),optional :: cart2(:)
-    real(real_kind)                          :: dist(SIZE(cart1))
+    real(r8)                          :: dist(SIZE(cart1))
 
     integer             :: i
 
@@ -239,16 +256,15 @@ contains
   ! ==========================================================================
   ! cart_to_spherical:
   !
-  ! converts 3D cartesian {x,y,z} to spherical polar {lon,lat} 
+  ! converts 3D cartesian {x,y,z} to spherical polar {lon,lat}
   ! on unit sphere. Note: spherical longitude is [0,2\pi]
   ! ==========================================================================
 
   ! scalar version
 
   pure function cart_to_spherical(cart) result (sphere)
-    use physical_constants, only : dd_pi
-    implicit none
-    type(cartesian3D_t), intent(in) :: cart         
+
+    type(cartesian3D_t), intent(in) :: cart
     type(spherical_polar_t)         :: sphere
 
     sphere%r=distance(cart)
@@ -259,7 +275,7 @@ contains
     ! enforce three facts:
     !
     ! 1) lon at poles is defined to be zero
-    ! 
+    !
     ! 2) Grid points must be separated by about .01 Meter (on earth)
     !    from pole to be considered "not the pole".
     !
@@ -269,12 +285,12 @@ contains
 
 !   if point is away from the POLE.  distance(cart) = distance from center of earth,
 !   so this was a bug:
-!    if (distance(cart) >= DIST_THRESHOLD) then 
+!    if (distance(cart) >= DIST_THRESHOLD) then
 
-    if ( abs(abs(sphere%lat)-DD_PI/2)  >= DIST_THRESHOLD ) then
+    if ( abs(abs(sphere%lat)-PI/2)  >= DIST_THRESHOLD ) then
        sphere%lon=ATAN2(cart%y,cart%x)
        if (sphere%lon<0) then
-          sphere%lon=sphere%lon + 2*DD_PI
+          sphere%lon=sphere%lon + 2*PI
        end if
     end if
 
@@ -282,19 +298,18 @@ contains
 
   pure function aray_to_spherical(coordinates) result (sphere)
     implicit none
-    real(kind=real_kind),  intent(in)    :: coordinates(3)
+    real(kind=r8),  intent(in)    :: coordinates(3)
     type(spherical_polar_t)              :: sphere
     type(cartesian3D_t)                  :: cart
     cart%x = coordinates(1)
     cart%y = coordinates(2)
     cart%z = coordinates(3)
-    sphere = cart_to_spherical(cart) 
+    sphere = cart_to_spherical(cart)
   end function aray_to_spherical
 
 
   pure function cart_to_spherical_v(cart) result (sphere)
-    use physical_constants, only     : dd_pi
-    implicit none
+
     type(cartesian3D_t), intent(in) :: cart(:)
     type(spherical_polar_t)         :: sphere(SIZE(cart))
 
@@ -310,18 +325,18 @@ contains
 ! Note: Output spherical longitude is [-pi,pi]
 
 ! Project from a UNIT cube to a UNIT sphere.  ie, the lenght of the cube edge is 2.
-! Face 1 of the cube touches the sphere at longitude, latitude (0,0). The negative 
+! Face 1 of the cube touches the sphere at longitude, latitude (0,0). The negative
 ! x axis is negative longitude (ie. going west is negative), the positive x axis
 ! is increasing longitude.  Face 1 maps the Face 1 to the lat,lon on the sphere:
 !    [-1,1] x [-1,1] => [-\pi/4,\pi/4] x [-\pi/4, \pi/4]
 
-! Face 2 continues with increasing longitude (ie to the east of Face 1).  
+! Face 2 continues with increasing longitude (ie to the east of Face 1).
 ! The left edge of Face 2 (negative x) is the right edge of Face 1 (positive x)
 ! The latitude is the same as Face 1, but the longitude increases:
 !    [-1,1] x [-1,1] => [\pi/4, 3\pi/4] x [-\pi/4, \pi/4]
 
-! Face 3 continues with increasing longitude (ie to the east of Face 2).  
-! Face 3 is like Face 1, but the x coordinates are reversed, ie. decreasing x 
+! Face 3 continues with increasing longitude (ie to the east of Face 2).
+! Face 3 is like Face 1, but the x coordinates are reversed, ie. decreasing x
 ! is increasing longitude:
 !    [-1,1] x [-1,1]  =    [-1,0] x [-1,1] U  [0,1] x [-1,1] =>
 !            [3\pi/4,\pi] x [-\pi, -3\pi/4]
@@ -331,72 +346,69 @@ contains
 
 ! Face 5 is along the bottom edges of Faces 1,2,3,and 4 so the latitude goes from
 ! -\pi/4 to -\pi/2.  The tricky part is lining up the longitude.  The zero longitude
-! must line up with the center of Face 1. ATAN2(x,1) = 0 => x = 0.  
-! So the (0,1) point on Face 5 is the zero longitude on the sphere.  The top edge of 
-! Face 5 is the bottom edge of Face 1. 
+! must line up with the center of Face 1. ATAN2(x,1) = 0 => x = 0.
+! So the (0,1) point on Face 5 is the zero longitude on the sphere.  The top edge of
+! Face 5 is the bottom edge of Face 1.
 ! ATAN(x,0) = \pi/2 => x = 1, so the right edge of Face 5 is the bottom of Face 2.
 ! Continueing, the bottom edge of 5 is the bottom of 3.  Left of 5 is bottom of 4.
 
-! Face 6 is along the top edges of Faces 1,2,3 and 4 so the latitude goes from  
-! \pi/4 to \pi/2.   The zero longitude must line up with the center of Face 1.  
+! Face 6 is along the top edges of Faces 1,2,3 and 4 so the latitude goes from
+! \pi/4 to \pi/2.   The zero longitude must line up with the center of Face 1.
 ! This is just like Face 5, but the y axis is reversed.  So the bottom edge of Face 6
 ! is the top edge of Face 1.  The right edge of Face 6 is the top of Face 2.  The
 ! top of 6 the top of 3 and the left of 6 the top of 4.
 
-    use physical_constants, only : DD_PI
-    use parallel_mod,       only : abortmp
-    implicit none
     type (cartesian2d_t), intent(in)     :: cart   ! On face_no of a unit cube
-    integer,              intent(in)     :: face_no 
- 
+    integer,              intent(in)     :: face_no
+
     type (spherical_polar_t)             :: sphere
 
     integer i,j
-    real(kind=real_kind) :: r!, l_inf
+    real(kind=r8) :: r!, l_inf
 
 ! MNL: removing check that points are on the unit cube because we allow
 ! spherical grids to map beyond the extent of the cube (though we probably
 ! should still have an upper bound for how far past the edge the element lies)
-!    l_inf = MAX(ABS(cart%x), ABS(cart%y)) 
+!    l_inf = MAX(ABS(cart%x), ABS(cart%y))
 !    if (1.01 < l_inf) then
-!      call abortmp('unit_face_based_cube_to_unit_sphere: Input not on unit cube.')
+!      call endrun('unit_face_based_cube_to_unit_sphere: Input not on unit cube.')
 !    end if
 
     sphere%r=one
     r = SQRT( one + (cart%x)**2 + (cart%y)**2)
     select case (face_no)
-    case (1) 
+    case (1)
        sphere%lat=ASIN((cart%y)/r)
        sphere%lon=ATAN2(cart%x,one)
-    case (2) 
+    case (2)
        sphere%lat=ASIN((cart%y)/r)
        sphere%lon=ATAN2(one,-cart%x)
-    case (3) 
+    case (3)
        sphere%lat=ASIN((cart%y)/r)
        sphere%lon=ATAN2(-cart%x,-one)
-    case (4) 
+    case (4)
        sphere%lat=ASIN((cart%y)/r)
        sphere%lon=ATAN2(-one,cart%x)
-    case (5) 
+    case (5)
        if (ABS(cart%y) > DIST_THRESHOLD .or. ABS(cart%x) > DIST_THRESHOLD ) then
           sphere%lon=ATAN2(cart%x, cart%y )
        else
-          sphere%lon= 0.0D0     ! longitude is meaningless at south pole set to 0.0
+          sphere%lon= 0.0_r8     ! longitude is meaningless at south pole set to 0.0
        end if
        sphere%lat=ASIN(-one/r)
-    case (6) 
+    case (6)
        if (ABS(cart%y) > DIST_THRESHOLD .or. ABS(cart%x) > DIST_THRESHOLD ) then
           sphere%lon = ATAN2(cart%x, -cart%y)
        else
-          sphere%lon= 0.0D0     ! longitude is meaningless at north pole set to 0.0
+          sphere%lon= 0.0_r8     ! longitude is meaningless at north pole set to 0.0
        end if
        sphere%lat=ASIN(one/r)
     case default
-       call abortmp('unit_face_based_cube_to_unit_sphere: Face number not 1 to 6.')
+       call endrun('unit_face_based_cube_to_unit_sphere: Face number not 1 to 6.')
     end select
 
-    if (sphere%lon < 0.0D0) then
-       sphere%lon=sphere%lon + two*DD_PI
+    if (sphere%lon < 0.0_r8) then
+       sphere%lon=sphere%lon + two*PI
     end if
 
   end function unit_face_based_cube_to_unit_sphere
@@ -406,18 +418,18 @@ contains
 ! Note: Output spherical longitude is [-pi,pi]
 
 ! Project from a UNIT cube to a UNIT sphere.  ie, the lenght of the cube edge is 2.
-! Face 1 of the cube touches the sphere at longitude, latitude (0,0). The negative 
+! Face 1 of the cube touches the sphere at longitude, latitude (0,0). The negative
 ! x axis is negative longitude (ie. going west is negative), the positive x axis
 ! is increasing longitude.  Face 1 maps the Face 1 to the lat,lon on the sphere:
 !    [-1,1] x [-1,1] => [-\pi/4,\pi/4] x [-\pi/4, \pi/4]
 
-! Face 2 continues with increasing longitude (ie to the east of Face 1).  
+! Face 2 continues with increasing longitude (ie to the east of Face 1).
 ! The left edge of Face 2 (negative x) is the right edge of Face 1 (positive x)
 ! The latitude is the same as Face 1, but the longitude increases:
 !    [-1,1] x [-1,1] => [\pi/4, 3\pi/4] x [-\pi/4, \pi/4]
 
-! Face 3 continues with increasing longitude (ie to the east of Face 2).  
-! Face 3 is like Face 1, but the x coordinates are reversed, ie. decreasing x 
+! Face 3 continues with increasing longitude (ie to the east of Face 2).
+! Face 3 is like Face 1, but the x coordinates are reversed, ie. decreasing x
 ! is increasing longitude:
 !    [-1,1] x [-1,1]  =    [-1,0] x [-1,1] U  [0,1] x [-1,1] =>
 !            [3\pi/4,\pi] x [-\pi, -3\pi/4]
@@ -427,72 +439,70 @@ contains
 
 ! Face 5 is along the bottom edges of Faces 1,2,3,and 4 so the latitude goes from
 ! -\pi/4 to -\pi/2.  The tricky part is lining up the longitude.  The zero longitude
-! must line up with the center of Face 1. ATAN2(x,1) = 0 => x = 0.  
-! So the (0,1) point on Face 5 is the zero longitude on the sphere.  The top edge of 
-! Face 5 is the bottom edge of Face 1. 
+! must line up with the center of Face 1. ATAN2(x,1) = 0 => x = 0.
+! So the (0,1) point on Face 5 is the zero longitude on the sphere.  The top edge of
+! Face 5 is the bottom edge of Face 1.
 ! ATAN(x,0) = \pi/2 => x = 1, so the right edge of Face 5 is the bottom of Face 2.
 ! Continueing, the bottom edge of 5 is the bottom of 3.  Left of 5 is bottom of 4.
 
-! Face 6 is along the top edges of Faces 1,2,3 and 4 so the latitude goes from  
-! \pi/4 to \pi/2.   The zero longitude must line up with the center of Face 1.  
+! Face 6 is along the top edges of Faces 1,2,3 and 4 so the latitude goes from
+! \pi/4 to \pi/2.   The zero longitude must line up with the center of Face 1.
 ! This is just like Face 5, but the y axis is reversed.  So the bottom edge of Face 6
 ! is the top edge of Face 1.  The right edge of Face 6 is the top of Face 2.  The
 ! top of 6 the top of 3 and the left of 6 the top of 4.
 
-    use physical_constants, only : DD_PI
-    use parallel_mod,       only : abortmp
     implicit none
-    real(kind=real_kind), intent(in)     :: x,y   ! On face_no of a unit cube
-    integer,              intent(in)     :: face_no 
- 
+    real(kind=r8), intent(in)     :: x,y   ! On face_no of a unit cube
+    integer,              intent(in)     :: face_no
+
     type (spherical_polar_t)             :: sphere
 
     integer i,j
-    real(kind=real_kind) :: r!, l_inf
+    real(kind=r8) :: r!, l_inf
 
 ! MNL: removing check that points are on the unit cube because we allow
 ! spherical grids to map beyond the extent of the cube (though we probably
 ! should still have an upper bound for how far past the edge the element lies)
-!    l_inf = MAX(ABS(cart%x), ABS(cart%y)) 
+!    l_inf = MAX(ABS(cart%x), ABS(cart%y))
 !    if (1.01 < l_inf) then
-!      call abortmp('unit_face_based_cube_to_unit_sphere: Input not on unit cube.')
+!      call endrun('unit_face_based_cube_to_unit_sphere: Input not on unit cube.')
 !    end if
 
     sphere%r=one
     r = SQRT( one + x**2 + y**2)
     select case (face_no)
-    case (1) 
+    case (1)
        sphere%lat=ASIN(y/r)
        sphere%lon=ATAN2(x,one)
-    case (2) 
+    case (2)
        sphere%lat=ASIN(y/r)
        sphere%lon=ATAN2(one,-x)
-    case (3) 
+    case (3)
        sphere%lat=ASIN(y/r)
        sphere%lon=ATAN2(-x,-one)
-    case (4) 
+    case (4)
        sphere%lat=ASIN(y/r)
        sphere%lon=ATAN2(-one,x)
-    case (5) 
+    case (5)
        if (ABS(y) > DIST_THRESHOLD .or. ABS(x) > DIST_THRESHOLD ) then
           sphere%lon=ATAN2(x, y )
        else
-          sphere%lon= 0.0D0     ! longitude is meaningless at south pole set to 0.0
+          sphere%lon= 0.0_r8     ! longitude is meaningless at south pole set to 0.0
        end if
        sphere%lat=ASIN(-one/r)
-    case (6) 
+    case (6)
        if (ABS(y) > DIST_THRESHOLD .or. ABS(x) > DIST_THRESHOLD ) then
           sphere%lon = ATAN2(x, -y)
        else
-          sphere%lon= 0.0D0     ! longitude is meaningless at north pole set to 0.0
+          sphere%lon= 0.0_r8     ! longitude is meaningless at north pole set to 0.0
        end if
        sphere%lat=ASIN(one/r)
     case default
-       call abortmp('unit_face_based_cube_to_unit_sphere: Face number not 1 to 6.')
+       call endrun('unit_face_based_cube_to_unit_sphere: Face number not 1 to 6.')
     end select
 
-    if (sphere%lon < 0.0D0) then
-       sphere%lon=sphere%lon + two*DD_PI
+    if (sphere%lon < 0.0_r8) then
+       sphere%lon=sphere%lon + two*PI
     end if
 
   end function cart2spherical
@@ -505,17 +515,17 @@ contains
 
 
 ! Note: Output spherical longitude is [-pi,pi]
-  function projectpoint(cartin, face_no) result(sphere)         
+  function projectpoint(cartin, face_no) result(sphere)
 
-! Projection from a [-pi/4, \pi/4] sized cube.  
+! Projection from a [-pi/4, \pi/4] sized cube.
 ! This will be checked because unit_face_based_cube_to_unit_sphere checks the ranges.
 ! See unit_face_based_cube_to_unit_sphere for documentation.
 
     implicit none
-    type (cartesian2d_t), intent(in)     :: cartin   
+    type (cartesian2d_t), intent(in)     :: cartin
     integer,              intent(in)     :: face_no
     type (spherical_polar_t)             :: sphere
-    type (cartesian2d_t)                 :: cart   
+    type (cartesian2d_t)                 :: cart
 
     !ASC  This is X and Y and not xhi eta ...
 
@@ -526,7 +536,7 @@ contains
 
   end function projectpoint
 
-  ! takes a 2D point on a face of the cube of size [-\pi/4, \pi/4] and projects it 
+  ! takes a 2D point on a face of the cube of size [-\pi/4, \pi/4] and projects it
   ! onto a 3D point on a cube of size [-1,1] in R^3
   function cubedsphere2cart(cartin, face_no) result(cart)
     implicit none
@@ -543,45 +553,43 @@ contains
   ! onto a cube of size [-\pi/2,\pi/2] in R^3
   ! the spherical longitude can be either in [0,2\pi] or [-\pi,\pi]
   pure function sphere2cubedsphere (sphere, face_no) result(cart)
-    use physical_constants, only : dd_pi
     implicit none
     type(spherical_polar_t), intent(in) :: sphere
     integer,                 intent(in) :: face_no
 
     type(cartesian2d_t)                 :: cart
-    real(kind=real_kind)               :: xp,yp
-    real(kind=real_kind)               :: lat,lon
-    real(kind=real_kind)               :: pi,twopi, pi2, pi3, pi4
+    real(kind=r8)               :: xp,yp
+    real(kind=r8)               :: lat,lon
+    real(kind=r8)               :: twopi, pi2, pi3, pi4
 
     lat = sphere%lat
     lon = sphere%lon
 
-    pi    = DD_PI 
-    twopi = 2.0D0 * pi
-    pi2   = pi * 0.5D0 
-    pi3   = pi * 1.5D0               
-    pi4   = pi * 0.25D0
+    twopi = 2.0_r8 * pi
+    pi2   = pi * 0.5_r8
+    pi3   = pi * 1.5_r8
+    pi4   = pi * 0.25_r8
 
     select case (face_no)
-    case  (1) 
+    case  (1)
        xp = lon
        if (pi < lon) xp = lon - twopi !if lon in [0,2\pi]
        yp = atan(tan(lat)/cos(xp))
-    case  (2) 
+    case  (2)
        xp = lon - pi2
        yp = atan(tan(lat)/cos(xp))
-    case  (3) 
+    case  (3)
        xp = lon - pi
        if (lon < 0) xp = lon + pi  !if lon in [0,2\pi]
        yp = atan(tan(lat)/cos(xp))
-    case  (4) 
+    case  (4)
        xp = lon - pi3
        if (lon < 0) xp = lon + pi2  !if lon in [0,2\pi]
        yp = atan(tan(lat)/cos(xp))
-    case  (5) 
+    case  (5)
        xp = atan(-sin(lon)/tan(lat))
        yp = atan(-cos(lon)/tan(lat))
-    case  (6) 
+    case  (6)
        xp = atan( sin(lon)/tan(lat))
        yp = atan(-cos(lon)/tan(lat))
     end select
@@ -589,11 +597,11 @@ contains
     ! coordinates on the cube:
     cart%x = xp
     cart%y = yp
-    
-  end function sphere2cubedsphere 
 
-! Go from an arbitrary sized cube in 3D 
-! to a [-\pi/4,\pi/4] sized cube with (face,2d) coordinates.  
+  end function sphere2cubedsphere
+
+! Go from an arbitrary sized cube in 3D
+! to a [-\pi/4,\pi/4] sized cube with (face,2d) coordinates.
 !
 !                        Z
 !                        |
@@ -618,11 +626,11 @@ contains
     implicit none
     type(cartesian3D_t),intent(in) :: cart3d
     integer,            intent(in) :: face_no
-    type (cartesian2d_t)           :: cart   
+    type (cartesian2d_t)           :: cart
 
-    real(kind=real_kind) :: x,y
+    real(kind=r8) :: x,y
 
-    select case (face_no) 
+    select case (face_no)
     case (1)
        x =  cart3D%y/cart3D%x
        y =  cart3D%z/cart3D%x
@@ -646,30 +654,94 @@ contains
     cart%y = ATAN(y)
   end function cart2cubedsphere
 
+  function cart2cubedsphere_failsafe(cart3D, face_no) result(cart)
+    implicit none
+    type(cartesian3D_t),intent(in) :: cart3d
+    integer,            intent(in) :: face_no
+    type (cartesian2d_t)           :: cart
+
+    real(kind=r8) :: x,y
+
+    select case (face_no)
+    case (1)
+      if (abs(cart3D%x) < 1.E-13_r8) then
+        cart%x=9.0E9_r8
+        cart%y=9.0E9_r8
+        return
+      end if
+       x =  cart3D%y/cart3D%x
+       y =  cart3D%z/cart3D%x
+    case (2)
+      if (abs(cart3D%y)<1.0E-13_r8) then
+        cart%x=9.0E9_r8
+        cart%y=9.0E9_r8
+        return
+      end if
+       x = -cart3D%x/cart3D%y
+       y =  cart3D%z/cart3D%y
+    case (3)
+      if (abs(cart3D%x)<1.0E-13_r8) then
+        cart%x=9.0E9_r8
+        cart%y=9.0E9_r8
+        return
+      end if
+       x =  cart3D%y/cart3D%x
+       y = -cart3D%z/cart3D%x
+    case (4)
+      if (abs(cart3D%y)<1.0E-13_r8) then
+        cart%x=9.0E9_r8
+        cart%y=9.0E9_r8
+        return
+      end if
+       x = -cart3D%x/cart3D%y
+       y = -cart3D%z/cart3D%y
+    case (5)
+      if (abs(cart3D%z)<1.0E-13_r8) then
+        cart%x=9.0E9_r8
+        cart%y=9.0E9_r8
+        return
+      end if
+       x  = -cart3D%y/cart3D%z
+       y  = -cart3D%x/cart3D%z
+    case (6)
+      if (abs(cart3D%z)<1.0E-13_r8) then
+        cart%x=9.0E9_r8
+        cart%y=9.0E9_r8
+        return
+      end if
+       x  =  cart3D%y/cart3D%z
+       y  = -cart3D%x/cart3D%z
+     case default
+       write(*,*) "face_no out out range ",face_no
+    end select
+    cart%x = ATAN(x)
+    cart%y = ATAN(y)
+  end function cart2cubedsphere_failsafe
 
 
-! This function divides three dimentional space up into 
+
+! This function divides three dimentional space up into
 ! six sectors.  These sectors are then considered as the
 ! faces of the cube.  It should work for any (x,y,z) coordinate
 ! if on a sphere or on a cube.
   pure function cube_face_number_from_cart(cart) result(face_no)
 
     implicit none
-    type(cartesian3D_t),intent(in) :: cart  
+    type(cartesian3D_t),intent(in) :: cart
     integer :: face_no
 
-    real(real_kind) :: x,y,z
+    real(r8) :: x,y,z
     x=cart%x
     y=cart%y
     z=cart%z
 
-! Divide the X-Y plane into for quadrants of 
+! Divide the X-Y plane into for quadrants of
 ! [-\pi/2,\pi/2], [\pi/2,3\pi/2], .....
 ! based on the lines X=Y and X=-Y.  This divides
 ! 3D space up into four sections.  Doing the same
 ! for the XZ and YZ planes divides space into six
 ! sections.  Can also be thought of as conic sections
-! in the L_infinity norm.  
+! in the L_infinity norm.
 
     if (y<x .and. y>-x) then      ! x>0, Face 1,5 or 6
       if (z>x) then
@@ -684,7 +756,7 @@ contains
          face_no=6 ! north pole
       else if (z<x) then
          face_no=5 ! south pole
-      else 
+      else
          face_no=3
       endif
    else if (y>x .and. y>-x) then  ! y>0
@@ -692,7 +764,7 @@ contains
          face_no=6 ! north pole
       else if (z<-y) then
         face_no = 5 ! south pole
-      else 
+      else
          face_no=2
       endif
    else if (y<x .and. y<-x) then  ! y<0
@@ -700,7 +772,7 @@ contains
          face_no=6 ! north pole
       else if (z<y) then
          face_no=5 ! south pole
-      else 
+      else
          face_no=4
       endif
    else
@@ -719,7 +791,7 @@ contains
          face_no = 4
       endif
    endif
-   
+
    end function cube_face_number_from_cart
 
 ! This could be done directly by using the lon, lat coordinates,
@@ -728,11 +800,11 @@ contains
   pure function cube_face_number_from_sphere(sphere) result(face_no)
     implicit none
     type (spherical_polar_t), intent(in) :: sphere
-    type (cartesian3d_t)                 :: cart   
-    integer                              :: face_no 
+    type (cartesian3d_t)                 :: cart
+    integer                              :: face_no
 
     cart =  spherical_to_cart(sphere)
-    face_no = cube_face_number_from_cart(cart) 
+    face_no = cube_face_number_from_cart(cart)
   end function cube_face_number_from_sphere
 
 ! CE, need real (cartesian) xy coordinates on the cubed sphere
@@ -740,7 +812,7 @@ subroutine cart2cubedspherexy(cart3d,face_no,cartxy)
 
   type(cartesian3D_t),intent(in)      :: cart3d
   integer, intent(in)                 :: face_no
-  type (cartesian2d_t), intent(out)   :: cartxy   
+  type (cartesian2d_t), intent(out)   :: cartxy
 
   ! a (half length of a cube side) is supposed to be 1
   select case (face_no)
@@ -776,16 +848,15 @@ end subroutine cart2cubedspherexy
   !  http://people.sc.fsu.edu/~burkardt/f_src/stri_quad/stri_quad.html
   !
   ! MT:  note that the usual Girard formula used below is ill-conditioned
-  ! for small nearly flat triangles (which is probably our case).  
-  ! I put in a crude fix below.    
+  ! for small nearly flat triangles (which is probably our case).
+  ! I put in a crude fix below.
   ! We should instead be using l'Huiller's formula,
   ! see:  http://williams.best.vwh.net/avform.htm
-  use physical_constants, only : dd_pi
-  implicit none
-  real(kind=real_kind) area
-  real(kind=real_kind) a,b,c,al,bl,cl,sina,sinb,sinc,sins,a1,b1,c1
+
+  real(kind=r8) area
+  real(kind=r8) a,b,c,al,bl,cl,sina,sinb,sinc,sins,a1,b1,c1
   type (cartesian3D_t) v1,v2,v3
-  
+
   ! compute great circle lengths
   al = acos( v2%x * v3%x + v2%y * v3%y + v2%z * v3%z )
   bl = acos( v3%x * v1%x + v3%y * v1%y + v3%z * v1%z )
@@ -794,24 +865,15 @@ end subroutine cart2cubedspherexy
   ! compute angles
   sina = sin( (bl+cl-al)/2 )  ! sin(sl-al)
   sinb = sin( (al+cl-bl)/2 )  ! sin(sl-bl)
-  sinc = sin( (al+bl-cl)/2 ) 
+  sinc = sin( (al+bl-cl)/2 )
   sins = sin( (al+bl+cl)/2 )
 
-
-#if 0
-  a = 2*atan2(sqrt(sinb*sinc), sqrt(sins*sina)  )
-  b = 2*atan2(sqrt(sina*sinc), sqrt(sins*sinb) )
-  c = 2*atan2(sqrt(sina*sinb), sqrt(sins*sinc) )
-  ! apply Girard's theorem
-  area = a+b+c - dd_pi
-#endif
-
-  ! for small areas, formula above looses precision.  
-  ! 2atan(x) + 2atan(1/x) = pi      
+  ! for small areas, formula above looses precision.
+  ! 2atan(x) + 2atan(1/x) = pi
   ! 2atan(x) - pi = -2atan(1/x)
-  a = sqrt( (sinb*sinc) / (sins*sina) ) 
-  b = sqrt( (sina*sinc) / (sins*sinb) ) 
-  c = sqrt( (sina*sinb) / (sins*sinc) ) 
+  a = sqrt( (sinb*sinc) / (sins*sina) )
+  b = sqrt( (sina*sinc) / (sins*sinb) )
+  c = sqrt( (sina*sinb) / (sins*sinc) )
 
 
   a1 = 2*atan(a)
@@ -822,33 +884,32 @@ end subroutine cart2cubedspherexy
      a1 = -2*atan(1/a)
   else if (b.gt.c) then
      b1 = -2*atan(1/b)
-  else 
+  else
      c1 = -2*atan(1/c)
   endif
   ! apply Girard's theorem
-  area = a1+b1+c1  
+  area = a1+b1+c1
 
 
   end subroutine sphere_tri_area
 
-!CE, 5.May 2011
 !INPUT: Points in xy cubed sphere coordinates, counterclockwise
 !OUTPUT: corresponding area on the sphere
 function surfareaxy(x1,x2,y1,y2) result(area)
   implicit none
-  real (kind=real_kind), intent(in)    :: x1, x2, y1, y2
-  real (kind=real_kind)   :: area
-  real (kind=real_kind)   :: a1,a2,a3,a4
+  real (kind=r8), intent(in)    :: x1, x2, y1, y2
+  real (kind=r8)   :: area
+  real (kind=r8)   :: a1,a2,a3,a4
 
   ! cubed-sphere cell area, from Lauritzen & Nair MWR 2008
   ! central angles:
   ! cube face: -pi/4,-pi/4 -> pi/4,pi/4
   ! this formula gives 2   so normalize by 4pi/6 / 2 = pi/3
   ! use implementation where the nodes a counterclockwise (not as in the paper)
-  a1 = acos(-sin(atan(x1))*sin(atan(y1)))             
-  a2 =-acos(-sin(atan(x2))*sin(atan(y1)))  
-  a3 = acos(-sin(atan(x2))*sin(atan(y2)))              
-  a4 =-acos(-sin(atan(x1))*sin(atan(y2)))         
+  a1 = acos(-sin(atan(x1))*sin(atan(y1)))
+  a2 =-acos(-sin(atan(x2))*sin(atan(y1)))
+  a3 = acos(-sin(atan(x2))*sin(atan(y2)))
+  a4 =-acos(-sin(atan(x1))*sin(atan(y2)))
   area = (a1+a2+a3+a4)
   return
 end function surfareaxy
