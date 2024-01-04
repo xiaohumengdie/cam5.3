@@ -174,6 +174,7 @@ contains
   subroutine Prim_Advec_Tracers_remap_rk2( elem , deriv , hvcoord , hybrid , dt , tl , nets , nete )
     use derivative_mod, only : divergence_sphere
     use control_mod   , only : qsplit
+    use hybrid_mod    , only : get_loop_ranges
 
     type (element_t)     , intent(inout) :: elem(:)
     type (derivative_t)  , intent(in   ) :: deriv
@@ -188,6 +189,7 @@ contains
     integer :: k,ie
     integer :: rkstage,rhs_multiplier
     integer :: n0_qdp, np1_qdp
+    integer :: kbeg,kend,qbeg,qend
 
 !    call t_barrierf('sync_prim_advec_tracers_remap_k2', hybrid%par%comm)
 !    call t_startf('prim_advec_tracers_remap_rk2')
@@ -205,11 +207,11 @@ contains
     !                            it is not needed
     ! Also: save a copy of div(U dp) in derived%div(:,:,:,1), which will be DSS'd
     !       and a DSS'ed version stored in derived%div(:,:,:,2)
+
+    call get_loop_ranges(hybrid,kbeg=kbeg,kend=kend,qbeg=qbeg,qend=qend)
+
     do ie=nets,nete
-#if (defined COLUMN_OPENMP)
-!$omp parallel do private(k, gradQ)
-#endif
-      do k=1,nlev
+      do k=kbeg,kend
         ! div( U dp Q),
         gradQ(:,:,1)=elem(ie)%derived%vn0(:,:,1,k)
         gradQ(:,:,2)=elem(ie)%derived%vn0(:,:,2,k)
@@ -236,7 +238,7 @@ contains
 !    call t_stopf ('euler_step')
 
     !to finish the 2D advection step, we need to average the t and t+2 results to get a second order estimate for t+1.
-    call qdp_time_avg( elem , rkstage , n0_qdp , np1_qdp , nets , nete )
+    call qdp_time_avg( elem , rkstage , n0_qdp , np1_qdp , hybrid, nets , nete )
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !  Dissipation
@@ -254,15 +256,22 @@ contains
 !-----------------------------------------------------------------------------
 !-----------------------------------------------------------------------------
 
-  subroutine qdp_time_avg( elem , rkstage , n0_qdp , np1_qdp , nets , nete )
-
+  subroutine qdp_time_avg( elem , rkstage , n0_qdp , np1_qdp , hybrid , nets , nete )
+    use hybrid_mod, only : hybrid_t, get_loop_ranges
     implicit none
     type(element_t)     , intent(inout) :: elem(:)
     integer             , intent(in   ) :: rkstage , n0_qdp , np1_qdp , nets , nete 
+    type(hybrid_t) :: hybrid
     integer :: i,j,ie,q,k
+    integer :: kbeg,kend,qbeg,qend
+    real(kind=r8) :: rrkstage
+
+    call get_loop_ranges(hybrid,kbeg=kbeg,kend=kend,qbeg=qbeg,qend=qend)
+
+    rrkstage=1.0_r8/real(rkstage,kind=r8)
     do ie=nets,nete
-      do q=1,qsize
-        do k=1,nlev
+      do q=qbeg,qend
+        do k=kbeg,kend
           do j=1,np
           do i=1,np
            elem(ie)%state%Qdp(i,j,k,q,np1_qdp) =               &
@@ -292,6 +301,7 @@ contains
   ! ===================================
   use dimensions_mod , only : np, nlev
   use hybrid_mod     , only : hybrid_t
+  use hybrid_mod     , only : get_loop_ranges
   use element_mod    , only : element_t
   use derivative_mod , only : derivative_t, divergence_sphere, limiter_optim_iter_full
   use edge_mod       , only : edgevpack, edgevunpack
@@ -322,12 +332,15 @@ contains
   real(kind=r8) :: dp0(nlev),qmin_val(nlev),qmax_val(nlev)
   integer :: ie,q,i,j,k, kptr
   integer :: rhs_viss = 0
-
+  integer :: kblk,qblk   ! The per thead size of the vertical and tracers
   integer :: kbeg, kend, qbeg, qend
 
+  call get_loop_ranges(hybrid,kbeg=kbeg,kend=kend,qbeg=qbeg,qend=qend)
 
+  kblk = kend - kbeg + 1   ! calculate size of the block of vertical levels
+  qblk = qend - qbeg + 1   ! calculate size of the block of tracers
 
-  do k = 1 , nlev
+  do k = kbeg, kend
     dp0(k) = ( hvcoord%hyai(k+1) - hvcoord%hyai(k) )*hvcoord%ps0 + &
           ( hvcoord%hybi(k+1) - hvcoord%hybi(k) )*hvcoord%ps0
   enddo
@@ -338,11 +351,6 @@ contains
   !   compute Q min/max values for lim8
   !   compute biharmonic mixing term f
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  qbeg = 1
-  qend = qsize
-  kbeg = 1
-  kend = nlev 
-
   rhs_viss = 0
   if ( limiter_option == 8  ) then
     ! when running lim8, we also need to limit the biharmonic, so that term needs
@@ -374,7 +382,7 @@ contains
     ! initialize dp, and compute Q from Qdp (and store Q in Qtens_biharmonic)
     do ie = nets, nete
       ! add hyperviscosity to RHS.  apply to Q at timelevel n0, Qdp(n0)/dp
-      do k = 1 , nlev    !  Loop index added with implicit inversion (AAM)
+      do k = kbeg, kend
         do j=1,np
         do i=1,np
           dp(i,j,k) = elem(ie)%derived%dp(i,j,k) - rhs_multiplier*dt*elem(ie)%derived%divdp_proj(i,j,k)
@@ -412,9 +420,12 @@ contains
     ! compute element qmin/qmax
     if ( rhs_multiplier == 0 ) then
       ! update qmin/qmax based on neighbor data for lim8
+!      call t_startf('euler_neighbor_minmax1')
       call neighbor_minmax(hybrid,edgeAdvQminmax,nets,nete,qmin(:,:,nets:nete),qmax(:,:,nets:nete))
+!      call t_stopf('euler_neighbor_minmax1')
     endif
 
+    ! get niew min/max values, and also compute biharmonic mixing term
     if ( rhs_multiplier == 2 ) then
       rhs_viss = 3
       ! two scalings depending on nu_p:
@@ -422,13 +433,14 @@ contains
       ! nu_p>0):   qtens_biharmonc *= elem()%psdiss_ave      (for consistency, if nu_p=nu_q)
       if ( nu_p > 0 ) then
         do ie = nets, nete
-          do k = 1 , nlev
+          do k = kbeg, kend
             do j=1,np
             do i=1,np
                dpdiss(i,j) = elem(ie)%derived%dpdiss_ave(i,j,k)
-              enddo
             enddo
-            do q = 1 , qsize
+            enddo
+
+          do q = qbeg,qend
               ! NOTE: divide by dp0 since we multiply by dp0 below
               do j=1,np
               do i=1,np
@@ -450,8 +462,8 @@ contains
       call neighbor_minmax_start(hybrid,edgeAdvQminmax,nets,nete,qmin(:,:,nets:nete),qmax(:,:,nets:nete))
       call biharmonic_wk_scalar(elem,qtens_biharmonic,deriv,edgeAdv,hybrid,nets,nete)
       do ie = nets, nete
-        do q = 1, qsize
-          do k = 1, nlev
+        do q = qbeg, qend
+          do k = kbeg, kend
             !OMP_COLLAPSE_SIMD 
             !DIR_VECTOR_ALIGNED
             do j=1,np
@@ -466,12 +478,14 @@ contains
       enddo
       call neighbor_minmax_finish(hybrid,edgeAdvQminmax,nets,nete,qmin(:,:,nets:nete),qmax(:,:,nets:nete))
 #else
+      call t_startf('euler_neighbor_minmax2')
       call neighbor_minmax(hybrid,edgeAdvQminmax,nets,nete,qmin(:,:,nets:nete),qmax(:,:,nets:nete))
+      call t_stopf('euler_neighbor_minmax2')
       call biharmonic_wk_scalar(elem,qtens_biharmonic,deriv,edgeAdv,hybrid,nets,nete)
 
       do ie = nets, nete
-        do q = 1, qsize
-          do k = 1, nlev
+        do q = qbeg, qend
+          do k = kbeg, kend
             !OMP_COLLAPSE_SIMD 
             !DIR_VECTOR_ALIGNED
             do j=1,np
@@ -495,14 +509,10 @@ contains
   !   2D Advection step
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   do ie = nets, nete
-    ! note: eta_dot_dpdn is actually dimension nlev+1, but nlev+1 data is
-    ! all zero so we only have to DSS 1:nlev
-    if ( DSSopt == DSSeta         ) DSSvar => elem(ie)%derived%eta_dot_dpdn(:,:,:)
-    if ( DSSopt == DSSomega       ) DSSvar => elem(ie)%derived%omega_p(:,:,:)
-    if ( DSSopt == DSSdiv_vdp_ave ) DSSvar => elem(ie)%derived%divdp_proj(:,:,:)
+
 
     ! Compute velocity used to advance Qdp
-    do k = 1 , nlev    !  Loop index added (AAM)
+    do k = kbeg, kend
       ! derived variable divdp_proj() (DSS'd version of divdp) will only be correct on 2nd and 3rd stage
       ! but that's ok because rhs_multiplier=0 on the first stage:
       do j=1,np
@@ -515,8 +525,10 @@ contains
     enddo
 
     ! advance Qdp
-    do q = 1 , qsize
-      do k = 1 , nlev  !  dp_star used as temporary instead of divdp (AAM)
+!    do q = 1 , qsize
+!      do k = 1 , nlev  !  dp_star used as temporary instead of divdp (AAM)
+    do q = qbeg, qend
+      do k = kbeg, kend
         ! div( U dp Q),
 
         do j=1,np
@@ -574,7 +586,7 @@ contains
       ! apply mass matrix, overwrite np1 with solution:
       ! dont do this earlier, since we allow np1_qdp == n0_qdp
       ! and we dont want to overwrite n0_qdp until we are done using it
-      do k = 1 , nlev
+      do k = kbeg, kend
         do j=1,np
         do i=1,np
             elem(ie)%state%Qdp(i,j,k,q,np1_qdp) = elem(ie)%spheremp(i,j) * Qtens(i,j,k)
@@ -593,39 +605,41 @@ contains
 !JMD !$OMP BARRIER
       endif
 
-      kptr = nlev*(q-1)
-      call edgeVpack(edgeAdvp1 , elem(ie)%state%Qdp(:,:,:,q,np1_qdp) , nlev , kptr , ie )
+      kptr = nlev*(q-1) + kbeg - 1
+      call edgeVpack(edgeAdvp1 , elem(ie)%state%Qdp(:,:,kbeg:kend,q,np1_qdp) , kblk , kptr , ie )
     enddo
-   
-    
+    ! only perform this operation on thread which owns the first tracer
+    if (DSSopt>0) then
 
         if ( DSSopt == DSSeta         ) DSSvar => elem(ie)%derived%eta_dot_dpdn(:,:,:)
         if ( DSSopt == DSSomega       ) DSSvar => elem(ie)%derived%omega_p(:,:,:)
         if ( DSSopt == DSSdiv_vdp_ave ) DSSvar => elem(ie)%derived%divdp_proj(:,:,:)
         ! also DSS extra field
-       do k = 1 , nlev
+        do k = kbeg, kend
           do j=1,np
           do i=1,np
              DSSvar(i,j,k) = elem(ie)%spheremp(i,j) * DSSvar(i,j,k)
           enddo
           enddo
         enddo
-        kptr = nlev*qsize
-        call edgeVpack( edgeAdvp1 , DSSvar(:,:,1:nlev) , nlev , kptr , ie )
+        kptr = nlev*qsize + kbeg - 1
+        call edgeVpack( edgeAdvp1 , DSSvar(:,:,kbeg:kend), kblk, kptr, ie)
+
+    end if
   enddo
 
-  call bndry_exchange( hybrid , edgeAdvp1)
+  call bndry_exchange( hybrid , edgeAdvp1,location='edgeAdvp1')
 
   do ie = nets, nete
     ! only perform this operation on thread which owns the first tracer
-
+    if (DSSopt>0) then
 
         if ( DSSopt == DSSeta         ) DSSvar => elem(ie)%derived%eta_dot_dpdn(:,:,:)
         if ( DSSopt == DSSomega       ) DSSvar => elem(ie)%derived%omega_p(:,:,:)
         if ( DSSopt == DSSdiv_vdp_ave ) DSSvar => elem(ie)%derived%divdp_proj(:,:,:)
         kptr = qsize*nlev + kbeg -1
-        call edgeVunpack( edgeAdvp1 , DSSvar(:,:,kbeg:kend) , nlev , kptr , ie )
-        do k = 1, nlev
+        call edgeVunpack( edgeAdvp1 , DSSvar(:,:,kbeg:kend) , kblk , kptr , ie )
+        do k = kbeg, kend
            !OMP_COLLAPSE_SIMD 
            !DIR_VECTOR_ALIGNED
            do j=1,np
@@ -635,11 +649,11 @@ contains
            enddo
         enddo
 
-
-    do q = 1, qsize
+    end if
+    do q = qbeg, qend
       kptr = nlev*(q-1) + kbeg - 1
-      call edgeVunpack( edgeAdvp1 , elem(ie)%state%Qdp(:,:,kbeg:kend,q,np1_qdp) , nlev , kptr , ie )
-        do k = 1, nlev
+      call edgeVunpack( edgeAdvp1 , elem(ie)%state%Qdp(:,:,kbeg:kend,q,np1_qdp) , kblk , kptr , ie )
+        do k = kbeg, kend
           !OMP_COLLAPSE_SIMD 
           !DIR_VECTOR_ALIGNED
           do j=1,np
@@ -715,6 +729,7 @@ contains
   !  For correct scaling, dt2 should be the same 'dt2' used in the leapfrog advace
   use dimensions_mod , only : np, nlev
   use hybrid_mod     , only : hybrid_t
+  use hybrid_mod     , only : get_loop_ranges
   use element_mod    , only : element_t
   use derivative_mod , only : derivative_t
   use edge_mod       , only : edgevpack, edgevunpack
@@ -739,16 +754,22 @@ contains
 !  real (kind=r8), dimension(      nlev,qsize,nets:nete) :: min_neigh
 !  real (kind=r8), dimension(      nlev,qsize,nets:nete) :: max_neigh
   integer :: k,kptr,ie,ic,q,i,j
-
+  integer :: kbeg,kend,qbeg,qend
 
 ! NOTE: PGI compiler bug: when using spheremp, rspheremp and ps as pointers to elem(ie)% members,
 !       data is incorrect (offset by a few numbers actually)
 !       removed for now.
 !  real (kind=r8), dimension(:,:), pointer :: spheremp,rspheremp
   real (kind=r8) :: dt,dp0
+  integer :: kblk,qblk   ! The per thead size of the vertical and tracers
+
+  call get_loop_ranges(hybrid,kbeg=kbeg,kend=kend,qbeg=qbeg,qend=qend)
+
   if ( nu_q           == 0 ) return
   if ( hypervis_order /= 2 ) return
 
+  kblk = kend - kbeg + 1   ! calculate size of the block of vertical levels
+  qblk = qend - qbeg + 1   ! calculate size of the block of tracers
 
   call t_startf('advance_hypervis_scalar')
 
@@ -760,10 +781,7 @@ contains
   do ic = 1 , hypervis_subcycle_q
     do ie = nets, nete
       ! Qtens = Q/dp   (apply hyperviscsoity to dp0 * Q, not Qdp)
-#if (defined COLUMN_OPENMP)
-!$omp parallel do private(k,dp0,q)
-#endif
-      do k = 1 , nlev
+      do k = kbeg, kend
          ! various options:
          !   1)  biharmonic( Qdp )
          !   2)  dp0 * biharmonic( Qdp/dp )
@@ -775,12 +793,14 @@ contains
               ( hvcoord%hybi(k+1) - hvcoord%hybi(k) ) * hvcoord%ps0
          dp(:,:,k) = elem(ie)%derived%dp(:,:,k) - dt2*elem(ie)%derived%divdp_proj(:,:,k)
          if (nu_p>0) then
-            do q = 1 , qsize
+!            do q = 1 , qsize
+            do q = qbeg, qend
                Qtens(:,:,k,q,ie) = elem(ie)%derived%dpdiss_ave(:,:,k)*&
                     elem(ie)%state%Qdp(:,:,k,q,nt_qdp) / dp(:,:,k)
             enddo
          else
-            do q = 1 , qsize
+!            do q = 1 , qsize
+            do q = qbeg, qend
                Qtens(:,:,k,q,ie) = dp0*elem(ie)%state%Qdp(:,:,k,q,nt_qdp) / dp(:,:,k)
             enddo
          endif
@@ -792,11 +812,8 @@ contains
 
     do ie = nets, nete
       !spheremp     => elem(ie)%spheremp
-#if (defined COLUMN_OPENMP)
-!$omp parallel do private(q,k,j,i,dp0)
-#endif
-      do q = 1 , qsize
-        do k = 1 , nlev
+      do q = qbeg, qend
+        do k = kbeg, kend
           dp0 = ( hvcoord%hyai(k+1) - hvcoord%hyai(k) ) * hvcoord%ps0 + &
                 ( hvcoord%hybi(k+1) - hvcoord%hybi(k) ) * hvcoord%ps0
          do j = 1 , np
@@ -817,22 +834,23 @@ contains
            ! smooth some of the negativities introduced by diffusion:
            call limiter2d_zero( elem(ie)%state%Qdp(:,:,:,q,nt_qdp) )
       enddo
-      call edgeVpack  ( edgeAdv , elem(ie)%state%Qdp(:,:,:,:,nt_qdp) , qsize*nlev , 0 , ie )
+      do q = qbeg, qend
+         kptr = nlev*(q-1) + kbeg - 1
+         call edgeVpack( edgeAdv , elem(ie)%state%Qdp(:,:,kbeg:kend,q,nt_qdp) , kblk, kptr, ie )
+      enddo
     enddo
 
-    call bndry_exchange( hybrid , edgeAdv)
+    call bndry_exchange( hybrid , edgeAdv,location='advance_hypervis_scalar')
 
     do ie = nets, nete
-
-
-         call edgeVunpack( edgeAdv , elem(ie)%state%Qdp(:,:,:,:,nt_qdp) , qsize*nlev , 0 , ie )
+      do q = qbeg, qend
+         kptr = nlev*(q-1) + kbeg - 1
+         call edgeVunpack( edgeAdv , elem(ie)%state%Qdp(:,:,kbeg:kend,q,nt_qdp) , kblk, kptr, ie )
+      enddo
       !rspheremp     => elem(ie)%rspheremp
-#if (defined COLUMN_OPENMP)
-!$omp parallel do private(q,k)
-#endif
-      do q = 1 , qsize
+      do q = qbeg, qend
         ! apply inverse mass matrix
-        do k = 1 , nlev
+        do k = kbeg, kend
           elem(ie)%state%Qdp(:,:,k,q,nt_qdp) = elem(ie)%rspheremp(:,:) * elem(ie)%state%Qdp(:,:,k,q,nt_qdp)
         enddo
       enddo
