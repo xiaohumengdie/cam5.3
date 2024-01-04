@@ -7,7 +7,7 @@ module hybrid_mod
 use parallel_mod  , only : parallel_t, copy_par
 use thread_mod    , only : omp_set_num_threads, omp_get_thread_num 
 use thread_mod    , only : horz_num_threads, vert_num_threads, tracer_num_threads
-use dimensions_mod, only : nlev, qsize, ntrac
+use dimensions_mod, only : nlev, qsize
 
 implicit none
 private

@@ -248,7 +248,7 @@ contains
     use control_mod, only : nu, nu_q, nu_div, hypervis_order, nu_top, hypervis_power, &
                             fine_ne, rk_stage_user, max_hypervis_courant, hypervis_scaling
     use control_mod, only : tracer_transport_type
-    use control_mod, only : TRACERTRANSPORT_LAGRANGIAN_FVM, TRACERTRANSPORT_FLUXFORM_FVM, TRACERTRANSPORT_SE_GLL
+    use control_mod, only : TRACERTRANSPORT_SE_GLL
     use parallel_mod, only : abortmp, global_shared_buf, global_shared_sum
     use edgetype_mod, only : EdgeBuffer_t
     use edge_mod, only : initedgebuffer, FreeEdgeBuffer, edgeVpack, edgeVunpack
@@ -381,15 +381,6 @@ contains
             if (elem(ie)%hv_courant.gt.max_hypervis_courant) then
                 stable_hv = sqrt( max_hypervis_courant / &
                      (  dtnu * (lambda_vis)**2 * (rrearth*elem(ie)%normDinv)**4 ) )
-
-#if 0
-         ! Useful print statements for debugging the adjustments to hypervis 
-                 print*, "Adjusting hypervis on elem ", elem(ie)%GlobalId
-                 print*, "From ", nu*elem(ie)%variable_hyperviscosity(1,1)**2, " to ", nu*stable_hv
-                 print*, "Difference = ", nu*(/elem(ie)%variable_hyperviscosity(1,1)**2-stable_hv/)
-                 print*, "Factor of ", elem(ie)%variable_hyperviscosity(1,1)**2/stable_hv
-                 print*, " "
-#endif
 
 !                make sure that: elem(ie)%hv_courant <=  max_hypervis_courant 
                 elem(ie)%variable_hyperviscosity = stable_hv
@@ -524,18 +515,6 @@ contains
        if (tracer_transport_type == TRACERTRANSPORT_SE_GLL) then
           write(iulog,'(a,f10.2,a)') 'Stability: advective (120m/s)   dt_tracer < S *',&
                1/(120.0d0*max_normDinv*lambda_max*rrearth),'s'
-       else if (tracer_transport_type == TRACERTRANSPORT_FLUXFORM_FVM   .or.&
-                tracer_transport_type == TRACERTRANSPORT_LAGRANGIAN_FVM) then
-          !
-          ! rough estimate of Courant number limted time-step:
-          !
-          ! U_max*dt_tracer/dx < nhe
-          !
-          ! where U_max=120 m/s and dx = 360 degrees/(4*ne*nc) = (2*pi*Rearth m)/(4*ne*nc)
-          !
-          write(iulog,'(a,f10.2,a)') "Stability (fvm Courant number): advective (120m/s)   dt_tracer < ",&
-               dble(nhe)*(2.0D0*dd_pi*Rearth/dble(4.0*ne*nc))/120.0d0,'s'
-          write(iulog,*) "(note that fvm stability is also limited by flow deformation - Lipschitz criterion!)"
        end if
        write(iulog,'(a,f10.2,a)') 'Stability: gravity wave(342m/s)   dt_dyn  < S *', &
             1/(342.0d0*max_normDinv*lambda_max*rrearth),'s'

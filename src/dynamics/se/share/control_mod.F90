@@ -16,18 +16,14 @@ module control_mod
   integer, public, parameter :: TRACERADV_UGRADQ=0            !  u grad(Q) formulation
   integer, public, parameter :: TRACERADV_TOTAL_DIVERGENCE=1   ! div(u dp/dn Q ) formulation
   integer, public  :: tracer_advection_formulation  = TRACERADV_TOTAL_DIVERGENCE
-  logical, public  :: use_semi_lagrange_transport   = .false.
 
 ! Tracer transport type
 ! We potentially have five types of tracer advection. However, not all of them
 ! may be chosen at runtime due to compile-type restrictions on arrays
   integer, public, parameter :: TRACERTRANSPORT_SE_GLL          = 1
   integer, public, parameter :: TRACERTRANSPORT_SEMILAGRANG_GLL = 2
-  integer, public, parameter :: TRACERTRANSPORT_LAGRANGIAN_FVM  = 3
-  integer, public, parameter :: TRACERTRANSPORT_FLUXFORM_FVM    = 4
   integer, public            :: tracer_transport_type = TRACERTRANSPORT_SE_GLL
   integer, public, parameter :: TRACER_GRIDTYPE_GLL = 11
-  integer, public, parameter :: TRACER_GRIDTYPE_FVM = 12
   integer, public            :: tracer_grid_type = TRACER_GRIDTYPE_GLL
 
 !shallow water advection tests:
@@ -188,7 +184,5 @@ module control_mod
   integer, public, parameter :: seast = 6
   integer, public, parameter :: nwest = 7
   integer, public, parameter :: neast = 8
-  
-  logical, public            :: test_cfldep=.FALSE.
 
 end module control_mod

@@ -288,16 +288,14 @@ contains
   end subroutine prim_advance_exp
 
 
-  subroutine applyCAMforcing(elem,fvm,hvcoord,np1,np1_qdp,dt_q,nets,nete)
-    use dimensions_mod,         only: np, nc, nlev, qsize, ntrac
+  subroutine applyCAMforcing(elem,hvcoord,np1,np1_qdp,dt_q,nets,nete)
+    use dimensions_mod,         only: np, nc, nlev, qsize
     use element_mod,            only: element_t
     use hybvcoord_mod, only : hvcoord_t
     use control_mod, only : moisture, tracer_grid_type
-    use control_mod, only : TRACER_GRIDTYPE_GLL, TRACER_GRIDTYPE_FVM
+    use control_mod, only : TRACER_GRIDTYPE_GLL
     use physical_constants, only: Cp
-    use fvm_control_volume_mod, only : fvm_struct
     type (element_t)     , intent(inout) :: elem(:)
-    type(fvm_struct)     , intent(inout) :: fvm(:)
     real (kind=r8), intent(in) :: dt_q
     type (hvcoord_t), intent(in)      :: hvcoord
     integer,  intent(in) :: np1,nets,nete,np1_qdp
@@ -340,26 +338,6 @@ contains
             enddo
           enddo
         enddo
-     else if (tracer_grid_type == TRACER_GRIDTYPE_FVM) then
-        ! Repeat for the fvm tracers
-        do q = 1, ntrac
-          do k = 1, nlev
-            do j = 1, nc
-              do i = 1, nc
-
-                v1 = fvm(ie)%fc(i,j,k,q)
-                if (fvm(ie)%c(i,j,k,q,np1_qdp) + v1 < 0 .and. v1<0) then
-                  if (fvm(ie)%c(i,j,k,q,np1_qdp) < 0 ) then
-                    v1 = 0  ! C already negative, dont make it more so
-                  else
-                    v1 = -fvm(ie)%c(i,j,k,q,np1_qdp)
-                  end if
-                end if
-                fvm(ie)%c(i,j,k,q,np1_qdp) = fvm(ie)%c(i,j,k,q,np1_qdp) + v1
-              end do
-            end do
-          end do
-        end do
       else
         call endrun('applyCAMforcing: ERROR: unsupported value for tracer_grid_type')
       end if
