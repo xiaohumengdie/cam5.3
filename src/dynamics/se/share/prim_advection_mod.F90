@@ -801,7 +801,7 @@ module prim_advection_mod
         statefreq, moisture, &
         nu_q, nu_p, limiter_option, hypervis_subcycle_q, rsplit
   use edgetype_mod, only       : EdgeBuffer_t
-  use edge_mod, only           : edgevpack, edgerotate, edgevunpack, initedgebuffer, initedgesbuffer, edgevunpackmin
+  use edge_mod, only           : edgevpack, edgevunpack, initedgebuffer, initedgesbuffer, edgevunpackmin
   use hybrid_mod, only         : hybrid_t
   use bndry_mod, only          : bndry_exchange
   use viscosity_mod, only      : biharmonic_wk_scalar,  neighbor_minmax, &
