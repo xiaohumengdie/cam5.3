@@ -34,8 +34,9 @@ module vertremap_mod
   use hybvcoord_mod, only          : hvcoord_t
   use element_mod, only            : element_t
   use perf_mod, only               : t_startf, t_stopf  ! _EXTERNAL
-  use parallel_mod, only           : abortmp, parallel_t
-  use control_mod, only : vert_remap_q_alg
+  use parallel_mod, only           : parallel_t
+  use control_mod,            only : vert_remap_q_alg
+  use cam_abortutils,          only: endrun
 
   public remap1                  ! remap any field, splines, monotone
   public remap1_nofilter         ! remap any field, splines, no filter
@@ -340,7 +341,7 @@ subroutine remap1(Qdp,nx,qsize,dp1,dp2)
     enddo
   enddo
   enddo ! q loop
-  if (abort) call abortmp('Bad levels in remap1.  usually CFL violatioin')
+  if (abort) call endrun('Bad levels in remap1.  usually CFL violatioin')
   call t_stopf('remap1')
 end subroutine remap1
 
@@ -485,7 +486,7 @@ subroutine remap1_nofilter(Qdp,nx,qsize,dp1,dp2)
     enddo
   enddo
   enddo ! q loop
-  if (abort) call abortmp('Bad levels in remap1_nofilter.  usually CFL violatioin')
+  if (abort) call endrun('Bad levels in remap1_nofilter.  usually CFL violatioin')
 !   call t_stopf('remap1_nofilter')
 end subroutine remap1_nofilter
 
@@ -807,7 +808,7 @@ module prim_advection_mod
   use viscosity_mod, only      : biharmonic_wk_scalar,  neighbor_minmax, &
                                  neighbor_minmax_start, neighbor_minmax_finish
   use perf_mod, only           : t_startf, t_stopf, t_barrierf ! _EXTERNAL
-  use parallel_mod, only   : abortmp
+  use cam_abortutils,         only: endrun
 
   implicit none
 
@@ -1956,8 +1957,8 @@ contains
   use hybvcoord_mod, only : hvcoord_t
   use vertremap_mod, only : remap1, remap1_nofilter, remap_q_ppm ! _EXTERNAL (actually INTERNAL)
   use control_mod, only :  rsplit, tracer_transport_type
-  use parallel_mod, only : abortmp
   use hybrid_mod     , only : hybrid_t
+  use cam_abortutils,         only: endrun
 
   type (hybrid_t), intent(in) :: hybrid  ! distributed parallel structure (shared)
   real (kind=real_kind)  :: psc(nc,nc), dpc(nc,nc,nlev),dpc_star(nc,nc,nlev)
@@ -2005,7 +2006,7 @@ contains
            dp_star(:,:,k) = dp(:,:,k) + dt*(elem(ie)%derived%eta_dot_dpdn(:,:,k+1) -&
                 elem(ie)%derived%eta_dot_dpdn(:,:,k))
         enddo
-        if (minval(dp_star)<0) call abortmp('negative layer thickness.  timestep or remap time too large')
+        if (minval(dp_star)<0) call endrun('negative layer thickness.  timestep or remap time too large')
      else
         !  REMAP u,v,T from levels in dp3d() to REF levels
         !
@@ -2017,7 +2018,7 @@ contains
                 ( hvcoord%hybi(k+1) - hvcoord%hybi(k) )*elem(ie)%state%ps_v(:,:,np1)
            dp_star(:,:,k) = elem(ie)%state%dp3d(:,:,k,np1)
         enddo
-        if (minval(dp_star)<0) call abortmp('negative layer thickness.  timestep or remap time too large')
+        if (minval(dp_star)<0) call endrun('negative layer thickness.  timestep or remap time too large')
 
         ! remap the dynamics:
 #undef REMAP_TE

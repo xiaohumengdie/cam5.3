@@ -58,7 +58,7 @@ contains
     ! --------------------------------
     use prim_advance_mod, only: prim_advance_init
     ! --------------------------------
-    use parallel_mod, only : iam, parallel_t, syncmp, abortmp, global_shared_buf, nrepro_vars
+    use parallel_mod, only : iam, parallel_t, syncmp, global_shared_buf, nrepro_vars
     use spmd_utils,             only: mpi_integer, mpi_max
     ! --------------------------------
     use spacecurve_mod, only : genspacepart
@@ -180,7 +180,7 @@ contains
     nelemd = LocalElemCount(MetaVertex(1))
 
     if(nelemd .le. 0) then
-       call abortmp('Not yet ready to handle nelemd = 0 yet' )
+       call endrun('Not yet ready to handle nelemd = 0 yet' )
        stop
     endif
 #ifdef _MPI
@@ -351,7 +351,7 @@ contains
 
   subroutine prim_init2(elem, hybrid, nets, nete, tl, hvcoord)
 
-    use parallel_mod, only : parallel_t, haltmp, syncmp, abortmp
+    use parallel_mod, only : parallel_t, syncmp
     use time_mod, only : timelevel_t, tstep, phys_tscale, timelevel_init, nendstep, smooth, nsplit, TimeLevel_Qdp
     use control_mod, only : runtype, &
          topology,columnpackage, moisture, rsplit, qsplit, rk_stage_user,&
@@ -443,7 +443,7 @@ contains
     end if
 
     if (topology /= "cube") then
-       call abortmp('Error: only cube topology supported for primaitve equations')
+       call endrun('Error: only cube topology supported for primaitve equations')
     endif
 
     ! For new runs, and branch runs, convert state variable to (Qdp)
@@ -551,7 +551,6 @@ contains
            energy_fixer, ftype, qsplit, rsplit
     use prim_advance_mod, only : applycamforcing, &
                                  applycamforcing_dynamics
-    use parallel_mod, only : abortmp
     use reduction_mod, only : parallelmax
     use prim_advection_mod, only : vertical_remap
 
@@ -701,7 +700,6 @@ contains
     use control_mod, only : tracer_grid_type, TRACER_GRIDTYPE_GLL
     use prim_advance_mod, only : prim_advance_exp
     use prim_advection_mod, only : prim_advec_tracers_remap, deriv
-    use parallel_mod, only : abortmp
     use reduction_mod, only : parallelmax
     use time_mod,    only : time_at
 
@@ -830,7 +828,6 @@ contains
     use control_mod, only : use_cpstar, energy_fixer
     use hybvcoord_mod, only : hvcoord_t
     use global_norms_mod, only: wrap_repro_sum
-    use parallel_mod, only : abortmp
     type (hybrid_t), intent(in)           :: hybrid  ! distributed parallel structure (shared)
     integer :: t2,n,nets,nete
     type (element_t)     , intent(inout), target :: elem(:)
@@ -855,7 +852,7 @@ contains
 
     t2=tl%np1    ! timelevel for T
     if (use_cpstar /= 0 ) then
-       call abortmp('Energy fixer requires use_cpstar=0')
+       call endrun('Energy fixer requires use_cpstar=0')
     endif
 
 

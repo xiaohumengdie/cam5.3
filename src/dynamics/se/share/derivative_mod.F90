@@ -3,7 +3,6 @@ module derivative_mod
   use cam_abortutils,     only: endrun
   use dimensions_mod, only : np, nc, nelemd
   use quadrature_mod, only : quadrature_t, gauss, gausslobatto,legendre, jacobi
-  use parallel_mod, only : abortmp
   ! needed for spherical differential operators:
   use physconst, only: ra
   use element_mod, only : element_t

@@ -99,7 +99,7 @@ contains
 
     use reduction_mod, only : ParallelMin,ParallelMax
     use physconst,      only: ra, rearth, pi
-    use parallel_mod, only : abortmp, global_shared_buf, global_shared_sum
+    use parallel_mod, only : global_shared_buf, global_shared_sum
     use edgetype_mod, only : EdgeBuffer_t
     use edge_mod, only : initedgebuffer, FreeEdgeBuffer, edgeVpack, edgeVunpack
     use bndry_mod, only : bndry_exchange

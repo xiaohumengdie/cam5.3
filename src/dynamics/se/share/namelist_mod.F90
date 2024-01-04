@@ -56,12 +56,13 @@ module namelist_mod
   !-----------------
   use time_mod, only : nsplit, smooth, phys_tscale
   !-----------------
-  use parallel_mod, only : parallel_t,  iam, abortmp, &
+  use parallel_mod, only : parallel_t,  iam, &
        partitionfornodes, useframes, mpireal_t, mpilogical_t, mpiinteger_t, mpichar_t
   !-----------------
 
   use interpolate_mod, only : vector_uvars, vector_vvars, max_vecvars, interpolate_analysis, replace_vec_by_vordiv
   use interpolate_mod, only : set_interp_parameter, get_interp_parameter
+  use cam_abortutils,         only: endrun
 
 !=======================================================================================================!
   implicit none
@@ -217,7 +218,7 @@ module namelist_mod
           read (unitn,ctl_nl,iostat=ierr)
           if (ierr < 0) then
             write(6,*) 'ierr =',ierr
-             call abortmp( subname//':: namelist read returns an'// &
+             call endrun( subname//':: namelist read returns an'// &
                   ' end of file or end of record condition' )
           end if
        end do
@@ -396,7 +397,7 @@ module namelist_mod
       write (*,*) "namelist_mod: mesh_file:",mesh_file, &
                   " and ne:",ne," are both sepcified in the input file."
       write (*,*) "Specify one or the other, but not both."
-      call abortmp("Do not specify ne if using a mesh file input.")
+      call endrun("Do not specify ne if using a mesh file input.")
     end if
     if (par%masterproc) write (iulog,*) "Mesh File:", trim(mesh_file)
     if (ne.eq.0) then
@@ -418,7 +419,7 @@ module namelist_mod
         print *,'(1) Set hypervis_power=1, hypervis_scaling=0 for HV based on an element area.'
         print *,'(2) Set hypervis_power=0 and hypervis_scaling=1 for HV based on a tensor.'
         print *,'(3) Set hypervis_power=0 and hypervis_scaling=0 for constant HV.'
-          call abortmp("Error: hypervis_power>0 and hypervis_scaling>0")
+          call endrun("Error: hypervis_power>0 and hypervis_scaling>0")
       endif
     endif
 
@@ -431,11 +432,11 @@ module namelist_mod
 
     ! CHECK phys timescale, requires se_ftype=0 (pure tendencies for forcing)
     if (phys_tscale/=0) then
-       if (ftype>0) call abortmp('user specified se_phys_tscale requires se_ftype<=0')
+       if (ftype>0) call endrun('user specified se_phys_tscale requires se_ftype<=0')
     endif
     if (limiter_option==8 .or. limiter_option==84) then
        if (hypervis_subcycle_q/=1) then
-          call abortmp('limiter 8,84 requires hypervis_subcycle_q=1')
+          call endrun('limiter 8,84 requires hypervis_subcycle_q=1')
        endif
     endif
 #endif

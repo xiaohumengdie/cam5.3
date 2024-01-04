@@ -8,7 +8,7 @@ module parallel_mod
   use cam_logfile,  only: iulog
 
   implicit none
-  public 
+  private
 
   integer,  public, parameter   :: ORDERED         = 1
   integer,  public, parameter   :: FAST            = 2
@@ -22,16 +22,19 @@ module parallel_mod
   integer,  public, parameter   :: HME_BNDRY_A2A   = 3
   integer,  public, parameter   :: HME_BNDRY_A2AO  = 4
 
-  integer, parameter, public :: HME_MPATTERN_P  = 101
-  integer, parameter, public :: HME_MPATTERN_S  = 102
-  integer, parameter, public :: HME_MPATTERN_G  = 103
+  integer,  public, parameter   :: nrepro_vars = MAX(10, nlev*qsize_d)
+  integer,  public, parameter   :: HME_MPATTERN_P  = 101
+  integer,  public, parameter   :: HME_MPATTERN_S  = 102
+  integer,  public, parameter   :: HME_MPATTERN_G  = 103
 
-  integer,      public            :: MaxNumberFrames, numframes
-  integer,      public            :: useframes 
-  logical,      public            :: PartitionForNodes,PartitionForFrames
-  integer,      public :: MPIreal_t,MPIinteger_t,MPIChar_t,MPILogical_t
-  integer,      public :: MPIaddr_kind
-  integer,      public :: iam
+  integer,  public              :: MaxNumberFrames
+  integer,  public              :: numframes
+  integer,  public              :: useframes
+  logical,  public              :: PartitionForNodes
+  logical,  public              :: PartitionForFrames
+  integer,  public              :: MPIreal_t,MPIinteger_t,MPIChar_t,MPILogical_t
+  integer,  public              :: MPIaddr_kind
+  integer,  public              :: iam
 
   ! Namelist-selectable type of boundary comms (AUTO,P2P,A2A,MASHM)
   integer,  public              :: boundaryCommMethod
@@ -43,20 +46,24 @@ module parallel_mod
   real(r8), public, allocatable :: FrameWeight(:)
   integer,  public, allocatable :: FrameIndex(:)
   integer,  public, allocatable :: FrameCount(:)
+  integer,  public              :: nComPoints
+  integer,  public              :: nPackPoints
+
+  real(r8), public, allocatable :: global_shared_buf(:,:)
+  real(r8), public              :: global_shared_sum(nrepro_vars)
 
   ! ==================================================
   ! Define type parallel_t for distributed memory info
   ! ==================================================
 
   integer, parameter :: ncomponents=1
-  integer,public     :: nComPoints,nPackPoints
 
   type, public :: parallel_t
     integer :: rank                       ! local rank
     integer :: root                       ! local root
     integer :: nprocs                     ! number of processes in group
-    integer :: comm                       ! local communicator
-    integer :: intercomm(0:ncomponents-1) ! inter communicator list
+    integer :: comm                       ! communicator
+    integer :: intercomm                  ! inter communicator list
     integer :: intracomm                  ! intra node communicator
     integer :: intracommsize              ! number of MPI ranks in intra communicator
     integer :: intracommrank              ! rank in intra communicator
@@ -68,20 +75,15 @@ module parallel_mod
   end type
 
   type (parallel_t), public :: par ! info for distributed memory programming
-  integer, parameter :: nrepro_vars=MAX(10,nlev*qsize_d)
-  real(r8), public, allocatable :: global_shared_buf(:,:)
-  real(r8), public :: global_shared_sum(nrepro_vars)
 
   ! ===================================================
   ! Module Interfaces
   ! ===================================================
 
   public :: initmpi
-  public :: haltmp
-  public :: abortmp
-  public :: split
-  public :: connect
   public :: syncmp
+  public :: copy_par
+
   interface assignment ( = )
     module procedure copy_par
   end interface
@@ -117,11 +119,9 @@ CONTAINS
 !  Initializes the parallel (message passing)
 !  environment, returns a parallel_t structure..
 ! ================================================
-     
+
   function initmpi(npes_in) result(par)
-#ifdef CAM
     use spmd_utils, only : mpicom
-#endif      
     integer, intent(in), optional ::  npes_in
     type (parallel_t) par
 
@@ -133,30 +133,28 @@ CONTAINS
     character(len=2)                                    :: cfn
 #endif
 
-    integer                              :: ierr,tmp
-    integer                              :: FrameNumber
+    integer              :: ierr,tmp
+    integer              :: FrameNumber
     logical :: running   ! state of MPI at beginning of initmpi call
     character(len=MPI_MAX_PROCESSOR_NAME)               :: my_name
     character(len=MPI_MAX_PROCESSOR_NAME), allocatable  :: the_names(:)
 
-    integer,allocatable                  :: tarray(:)
-    integer                              :: namelen,i
-#ifdef CAM
-    integer :: color
+    integer, allocatable :: tarray(:)
+    integer              :: namelen, i
+    integer              :: color
     integer :: iam_cam, npes_cam
     integer :: npes_homme
-#endif
     !================================================
     !     Basic MPI initialization
     ! ================================================
 
-    call MPI_initialized(running,ierr)
+    call MPI_initialized(running, ierr)
 
     if (.not.running) then
        call MPI_init(ierr)
     end if
 
-    par%root     = 0
+    par%root          = 0
     par%intercomm = 0
     
 #ifdef CAM
@@ -317,176 +315,28 @@ CONTAINS
 
   end function initmpi
 
-  ! =========================================================
-  ! abortmp:
+  ! =====================================
+  ! syncmp:
   !
-  ! Tries to abort the parallel (message passing) environment
-  ! and prints a message
-  ! =========================================================
-  subroutine abortmp(string)
-#ifdef CAM
-    use cam_abortutils, only : endrun
-#else
-#ifdef _MPI
-    integer info,ierr
-#endif
-#endif
-    character*(*) string
-#ifdef CAM
-    call endrun(string)
-#else
-    write(*,*) iam,' ABORTING WITH ERROR: ',string
-#ifdef _AIX
-    call xl__trbk()
-#endif
-#ifdef _MPI
-    call MPI_Abort(MPI_COMM_WORLD,info,ierr)
-    call MPI_finalize(info)
-#endif
-#endif
-  end subroutine abortmp
-       
-  ! =========================================================
-  ! haltmp:
+  ! sychronize message passing domains
   !
-  !> stops the parallel (message passing) environment 
-  !! and prints a message.
-  !
-  !> Print the message and call MPI_finalize. 
-  !! @param[in] string The message to be printed.
-  ! =========================================================
-  subroutine haltmp(string)
-         
-#ifdef _MPI
-  integer info
-#endif
-
-  character*(*) string
-  if(iam .eq. 1) then 
-    write(*,*) string
-  endif
-
-#ifdef _MPI
-  call MPI_finalize(info)
-#endif
-  ! This can send a non-zero error code to the shell
-  stop
-end subroutine haltmp
-
-  ! =========================================================
-  ! split:
-  !
-  ! splits the message passing world into components
-  ! and returns a new parallel structure for the
-  ! component resident at this process, i.e. lcl_component
-  ! =========================================================
-  function split(par,leader,lcl_component) result(newpar)
-
-    type (parallel_t)  :: par
-    type (parallel_t)  :: newpar
-    integer            :: lcl_component
-    integer            :: leader(0:ncomponents-1)
-
-#ifdef _MPI
-    integer ierr
-    integer info
-    integer            :: key
-#endif
-
-    lcl_component=ncomponents-1
-    do while(leader(lcl_component) > par%rank)
-      lcl_component=lcl_component-1
-    end do
-
-#ifdef _MPI
-    key=par%rank   ! simplest key for most cases
-
-    call MPI_comm_split(par%comm, lcl_component, key, newpar%comm,ierr);
-
-    call MPI_comm_rank(newpar%comm,newpar%rank,info)
-    call MPI_comm_size(newpar%comm,newpar%nprocs,info)
-    newpar%root=0
-#else
-    newpar%comm=-1
-    newpar%root=0
-    newpar%rank=0
-    newpar%nprocs=1
-#endif
-
-  end function split
-
-  ! =========================================================
-  ! connect:
-  !
-  ! connects this MPI component to all others by constructing
-  ! intercommunicator array and storing it in the local parallel
-  ! structure lcl_par. Connect assumes you have called split
-  ! to create the lcl_par structure.
-  !
-  ! =========================================================
-  subroutine connect(gbl_par, lcl_par, lcl_component, leader)
-
-    type (parallel_t) :: gbl_par
-    type (parallel_t) :: lcl_par
-    integer           :: lcl_component
-    integer           :: leader(0:ncomponents-1) ! leader rank in bridge group
-
-#ifdef _MPI
-    integer tag
-    integer i
-    integer ierr
-
-    do i=0,ncomponents-1
-
-      if (i > lcl_component) then
-        tag=ncomponents*lcl_component + i
-      else
-        tag=ncomponents*i+lcl_component
-      end if
-
-      if (i .ne. lcl_component) then
-#ifdef _DEBUG
-        write(iulog,10) lcl_component,
-     &                  gbl_par%rank,
-     &                  leader(lcl_component),
-     &                  leader(i),
-                        tag
-10      format("component=",i4, 
-     &         " gbl rank =",i4,   
-     &         " lcl leader=",i4,  
-     &         " rem leader=",i4, 
-     &         " tag=",i4)
-#endif
-        call MPI_Intercomm_create(lcl_par%comm, lcl_par%root, gbl_par%comm, &
-                                  leader(i), tag, lcl_par%intercomm(i), ierr)  
-      end if
-    end do     
-#endif 
-  end subroutine connect
-
-! =====================================
-! syncmp:
-! 
-! sychronize message passing domains 
-!
-! =====================================
+  ! =====================================
   subroutine syncmp(par)
+    use cam_abortutils, only: endrun
+    use spmd_utils,     only: MPI_MAX_ERROR_STRING, MPI_ERROR
 
-    type (parallel_t) par
+    type (parallel_t), intent(in)       :: par
 
-#ifdef _MPI
-#include <mpif.h>
-    integer                         :: errorcode,errorlen,ierr
-    character(len=MPI_MAX_ERROR_STRING)               :: errorstring
+    integer                             :: errorcode, errorlen, ierr
+    character(len=MPI_MAX_ERROR_STRING) :: errorstring
 
-    call MPI_barrier(par%comm,ierr)
+    call MPI_barrier(par%comm, ierr)
 
-    if(ierr.eq.MPI_ERROR) then
-      errorcode=ierr
-      call MPI_Error_String(errorcode,errorstring,errorlen,ierr)
-      call abortmp(errorstring)
-    endif
-#endif
+    if(ierr == MPI_ERROR) then
+      errorcode = ierr
+      call MPI_Error_String(errorcode, errorstring, errorlen, ierr)
+      call endrun(errorstring)
+    end if
   end subroutine syncmp
 
 end module parallel_mod
