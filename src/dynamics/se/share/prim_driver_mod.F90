@@ -4,7 +4,6 @@ module prim_driver_mod
   use dimensions_mod, only : np, nlev, nlevp, nelem, nelemd, nelemdmax, GlobalUniqueCols, qsize, nc,nhc
   use hybrid_mod, only : hybrid_t
   use quadrature_mod, only : quadrature_t, test_gauss, test_gausslobatto, gausslobatto
-  use filter_mod, only : filter_t
   use derivative_mod, only : derivative_t
   use reduction_mod, only : reductionbuffer_ordered_1d_t, red_min, red_max, &
          red_sum, red_sum_int, red_flops, initreductionbuffer
@@ -17,9 +16,6 @@ module prim_driver_mod
 
   type (quadrature_t)   :: gp                     ! element GLL points
 
-
-  type (filter_t)       :: flt             ! Filter struct for v and p grid
-  type (filter_t)       :: flt_advection   ! Filter struct for v grid for advection only
   real*8  :: tot_iter
   type (ReductionBuffer_ordered_1d_t), save :: red   ! reduction buffer               (shared)
 
@@ -30,7 +26,7 @@ contains
     ! --------------------------------
     use thread_mod, only : max_num_threads, omp_get_thread_num, omp_set_num_threads
     ! --------------------------------
-    use control_mod, only : runtype, restartfreq, filter_counter, integration, topology, &
+    use control_mod, only : runtype, restartfreq, topology, &
          partmethod, while_iter
     ! --------------------------------
     use namelist_mod, only : readnl
@@ -307,7 +303,6 @@ contains
     end do
 
     while_iter = 0
-    filter_counter = 0
 
     ! initialize flux terms to 0
 
@@ -360,12 +355,8 @@ contains
 
     use parallel_mod, only : parallel_t, haltmp, syncmp, abortmp
     use time_mod, only : timelevel_t, tstep, phys_tscale, timelevel_init, nendstep, smooth, nsplit, TimeLevel_Qdp
-    use filter_mod, only : filter_t, fm_filter_create, taylor_filter_create, &
-         fm_transfer, bv_transfer
-    use control_mod, only : runtype, integration, filter_mu, filter_mu_advection, test_case, &
-         debug_level, vfile_int, filter_freq, filter_freq_advection, &
-         transfer_type, vform, vfile_mid, filter_type, kcut_fm, wght_fm, p_bv, &
-         s_bv, topology,columnpackage, moisture, precon_method, rsplit, qsplit, rk_stage_user,&
+    use control_mod, only : runtype, vfile_int,vform, vfile_mid, &
+         topology,columnpackage, moisture, rsplit, qsplit, rk_stage_user,&
          sub_case, &
          limiter_option, nu, nu_q, nu_div, tstep_type, hypervis_subcycle, &
          hypervis_subcycle_q
@@ -406,8 +397,6 @@ contains
     character(len=80)     :: fname
     character(len=8)      :: njusn
     character(len=4)      :: charnum
-
-    real (kind=real_kind) :: Tp(np)     ! transfer function
 
     integer :: simday
     integer :: i,j,k,ie,iptr,t,q
@@ -451,36 +440,6 @@ contains
     ! Initialize derivative structure
     ! ==================================
     call Prim_Advec_Init2(hybrid)
-
-    ! ==========================================
-    ! Initialize pressure and velocity grid
-    ! filter matrix...
-    ! ==========================================
-    if (transfer_type == "bv") then
-       Tp    = bv_transfer(p_bv,s_bv,np)
-    else if (transfer_type == "fm") then
-       Tp    = fm_transfer(kcut_fm,wght_fm,np)
-    end if
-    if (filter_type == "taylor") then
-       flt           = taylor_filter_create(Tp, filter_mu,gp)
-       flt_advection = taylor_filter_create(Tp, filter_mu_advection,gp)
-    else if (filter_type == "fischer") then
-       flt           = fm_filter_create(Tp, filter_mu, gp)
-       flt_advection = fm_filter_create(Tp, filter_mu_advection, gp)
-    end if
-
-
-
-    if (hybrid%masterthread) then
-       if (filter_freq>0 .or. filter_freq_advection>0) then
-          write(iulog,*) "transfer function type in preq=",transfer_type
-          write(iulog,*) "filter type            in preq=",filter_type
-          write(*,'(a,99f10.6)') "dynamics: I-mu + mu*Tp(:) = ",&
-               (1-filter_mu)+filter_mu*Tp(:)
-          write(*,'(a,99f10.6)') "advection: I-mu + mu*Tp(:) = ",&
-               (1-filter_mu_advection)+filter_mu_advection*Tp(:)
-       endif
-    endif
 
     if (hybrid%ithr==0) then
        call syncmp(hybrid%par)
@@ -696,10 +655,6 @@ contains
        enddo
     enddo
 
-
-
-
-
     ! now we have:
     !   u(nm1)   dynamics at  t+dt_remap - 2*dt
     !   u(n0)    dynamics at  t+dt_remap - dt
@@ -744,7 +699,7 @@ contains
 !
     use hybvcoord_mod, only : hvcoord_t
     use time_mod, only : TimeLevel_t, timelevel_update, nsplit
-    use control_mod, only: statefreq, integration, ftype, qsplit, nu_p, rsplit
+    use control_mod, only: statefreq, ftype, qsplit, nu_p, rsplit
     use control_mod, only : tracer_transport_type
     use control_mod, only : tracer_grid_type, TRACER_GRIDTYPE_GLL
     use prim_advance_mod, only : prim_advance_exp
@@ -839,7 +794,7 @@ contains
     !   if tracer scheme needs dp3d, it needs to derive it from ps_v
     ! ===============
     if (tracer_grid_type == TRACER_GRIDTYPE_GLL) then
-      call Prim_Advec_Tracers_remap(elem, deriv(hybrid%ithr),hvcoord,flt_advection,hybrid,&
+      call Prim_Advec_Tracers_remap(elem, deriv(hybrid%ithr),hvcoord,hybrid,&
            dt_q,tl,nets,nete)
     else
       stop "erro tracer"

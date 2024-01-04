@@ -10,7 +10,6 @@ module namelist_mod
        MAX_FILE_LEN,  &
        partmethod,    &       ! Mesh partitioning method (METIS)
        topology,      &       ! Mesh topology
-       test_case,     &       ! test case
        uselapi,       &
        multilevel,    &
        numnodes,      &
@@ -26,7 +25,6 @@ module namelist_mod
        restartfile,   &       ! name of the restart file for INPUT
        restartdir,    &       ! name of the restart directory for OUTPUT
        runtype,       &
-       integration,   &       ! integration method
        tracer_advection_formulation, &   ! conservation or non-conservation formulaton
        tstep_type, &
        cubed_sphere_map, &
@@ -62,23 +60,9 @@ module namelist_mod
        u_perturb,     &          ! J&W bareclinic test perturbation size
        columnpackage, &
        moisture,      &
-       filter_type,   &
-       transfer_type, &
-       filter_freq,   &
-       filter_mu,     &
-       filter_freq_advection,   &
-       filter_mu_advection,     &
-       p_bv,          &
-       s_bv,          &
-       wght_fm,       &
-       kcut_fm,       &
        vform,           &
        vfile_mid,       &
        vfile_int,       &
-       precon_method, &
-       maxits,        &
-       tol,           &
-       debug_level,   &
        vert_remap_q_alg
       
 
@@ -156,7 +140,6 @@ module namelist_mod
                      accumfreq,     &       ! frequency in steps of accumulation
                      accumstart,    &       ! model day to start accumulating state variables
                      accumstop,     &       ! model day to stop  accumulating state variables
-                     integration,   &       ! integration method
                      tracer_advection_formulation, &
                      tstep_type, &
                      compute_mean_flux, &
@@ -198,22 +181,6 @@ module namelist_mod
                        se_write_phys_grid, &  ! Write physics grid file if .true.
                        se_phys_grid_file      ! Physics grid filename
 
-    namelist /solver_nl/precon_method, &
-                        maxits,        &
-                        tol,           &
-                        debug_level
-
-    namelist /filter_nl/filter_type,   &
-                        transfer_type, &
-                        filter_freq,   &
-                        filter_mu,     &
-                        filter_freq_advection,   &
-                        filter_mu_advection,     &
-                        p_bv,          &
-                        s_bv,          &
-                        wght_fm,       &
-                        kcut_fm       
-
     namelist /analysis_nl/    &
         interp_nlat,          &
         interp_nlon,          &
@@ -254,7 +221,6 @@ module namelist_mod
     remapfreq     = 240
     remap_type    = "parabolic"
     tasknum       =-1
-    integration   = "explicit"
     moisture      = "dry"
     columnpackage = "none"
     nu_top=0
@@ -312,100 +278,6 @@ module namelist_mod
           write(iulog,*)'readnl: runtype=', runtype,' interpolation mode '
        endif
 
-       write(iulog,*)"reading filter namelist..."
-       ! Set default mu/freq for advection filtering
-       filter_mu_advection   = 0.05_real_kind
-       filter_freq_advection = 0
-       filter_freq=0
-#if defined(CAM)
-! cam no longer expects filter_nl
-!       unitn=getunit()
-!       open( unitn, file=trim(nlfilename), status='old' )
-!       ierr = 1
-!       do while ( ierr /= 0 )
-!          read (unitn,filter_nl,iostat=ierr)
-!          if (ierr < 0) then
-!             call abortmp( subname//':: namelist read returns an'// &
-!                  ' end of file or end of record condition' )
-!          end if
-!       end do
-!       close( unitn )
-!       call freeunit( unitn )
-
-#elif defined(OSF1) || defined(_BGL) || defined(_NAMELIST_FROM_FILE)
-       read(unit=7,nml=filter_nl)
-#else
-       read(*,nml=filter_nl)
-#endif
-       !
-       ! A modulo(a,p) where p == 0 is undefined
-       if(filter_freq == 0) filter_freq = -1
-#ifndef CAM
-
-#ifdef _PRIMDG
-       write(iulog,*)"reading vert_nl namelist..."
-#if defined(OSF1) || defined(_BGL) || defined(_NAMELIST_FROM_FILE)
-       read(unit=7,nml=vert_nl)
-#else
-       read(*,nml=vert_nl)
-#endif
-#endif
-#ifdef _PRIM
-       write(iulog,*)"reading physics namelist..."
-       if (test_case=="held_suarez0" .or. &
-           test_case(1:10)=="baroclinic" .or. &
-           test_case(1:13)=="jw_baroclinic" .or. &
-           test_case(1:12)=="dcmip2_schar" .or. &
-           test_case(1:4)=="asp_" .or. &
-           test_case(1:10)=="aquaplanet") then
-         write(iulog,*) "reading vertical namelist..."
-#if defined(OSF1) || defined(_BGL) || defined(_NAMELIST_FROM_FILE)
-         read(unit=7,nml=vert_nl)
-#else
-         read(*,nml=vert_nl)
-#endif
-         ! Reformat these strings
-         vform = trim(adjustl(vform))
-         vfile_mid = trim(adjustl(vfile_mid))
-         vfile_int = trim(adjustl(vfile_int))
-
-         write(iulog,*) '  vform =',vform
-         write(iulog,*) '  vfile_mid=',vfile_mid
-         write(iulog,*) '  vfile_int=',vfile_int
-
-         write(iulog,*)"reading aquaplanet namelist..."
-         if(test_case(1:10)=="aquaplanet") then
-            cool_ampl     =  -1.5D0
-            cool_min      =  12.0D0
-            cool_max      =  15.0D0
-            qv_flag       =  0
-            qv_pert_flag  =  1
-            qv_pert_ampl  =  0.1D0
-            qv_pert_zmin  =  2.0D3
-            qv_pert_zmax  = 18.0D3
-            isrf_forc     =  1
-            h_dis         =  0.5D3
-            Cdrag         =  1.0D-3
-            wstar         =  1.0D0
-            tsurf         =  300.D0
-            qsurf         =  20.D-3
-            u0            =  0.D0
-            zabsampl      =  0.333D0
-            zabsmid       = 63.0D3
-            zabsmin       =  0.0D3
-            noisef        =  0
-
-#if defined(OSF1) || defined(_BGL) || defined(_NAMELIST_FROM_FILE)
-           read(unit=7,nml=aquaplanet_nl)
-#else
-           read(*,nml=aquaplanet_nl)
-#endif
-
-         end if
-
-       end if
-#endif
-#endif
 !      Default interpolation grid  (0 = auto compute based on ne,nv)  interpolation is off by default
 #ifdef PIO_INTERP
        interpolate_analysis=.true.
@@ -493,11 +365,9 @@ module namelist_mod
 #endif
     end if
 
-#ifdef CAM
     if(se_partmethod /= -1) partmethod = se_partmethod
     if(se_ne /= -1) ne = se_ne
     if(se_topology .ne. 'none') topology = se_topology
-#endif
 
     call MPI_barrier(par%comm,ierr)
 
@@ -509,7 +379,6 @@ module namelist_mod
 
     call MPI_bcast(PARTMETHOD ,1,MPIinteger_t,par%root,par%comm,ierr)
     call MPI_bcast(TOPOLOGY     ,MAX_STRING_LEN,MPIChar_t  ,par%root,par%comm,ierr)
-    call MPI_bcast(test_case    ,MAX_STRING_LEN,MPIChar_t  ,par%root,par%comm,ierr)
     call MPI_bcast(tasknum ,1,MPIinteger_t,par%root,par%comm,ierr)
 
     call MPI_bcast( ne        ,1,MPIinteger_t,par%root,par%comm,ierr)
@@ -558,7 +427,6 @@ module namelist_mod
     call MPI_bcast(initial_total_mass ,1,MPIreal_t   ,par%root,par%comm,ierr)
     call MPI_bcast(u_perturb     ,1,MPIreal_t   ,par%root,par%comm,ierr)
     call MPI_bcast(rotate_grid   ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(integration,MAX_STRING_LEN,MPIChar_t ,par%root,par%comm,ierr)
     call MPI_bcast(mesh_file,MAX_FILE_LEN,MPIChar_t ,par%root,par%comm,ierr)
     call MPI_bcast(tracer_advection_formulation,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(tstep_type,1,MPIinteger_t ,par%root,par%comm,ierr)
@@ -576,27 +444,6 @@ module namelist_mod
     call MPI_bcast(restartdir,MAX_STRING_LEN,MPIChar_t ,par%root,par%comm,ierr)
 
     call MPI_bcast(uselapi,1,MPIlogical_t,par%root,par%comm,ierr)
-
-    if ((integration == "semi_imp").or.(integration == "full_imp")) then
-       call MPI_bcast(precon_method,MAX_STRING_LEN,MPIChar_t,par%root,par%comm,ierr)
-       call MPI_bcast(maxits     ,1,MPIinteger_t,par%root,par%comm,ierr)
-       call MPI_bcast(tol        ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    end if
-
-    call MPI_bcast(filter_type   ,8,MPIChar_t    ,par%root,par%comm,ierr)
-    call MPI_bcast(transfer_type ,8,MPIChar_t    ,par%root,par%comm,ierr)
-    call MPI_bcast(filter_mu     ,1,MPIreal_t    ,par%root,par%comm,ierr)
-    call MPI_bcast(filter_freq   ,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(filter_mu_advection     ,1,MPIreal_t    ,par%root,par%comm,ierr)
-    call MPI_bcast(filter_freq_advection   ,1,MPIinteger_t ,par%root,par%comm,ierr)
-
-    if (transfer_type == "bv") then
-       call MPI_bcast(p_bv      ,1,MPIreal_t    ,par%root,par%comm,ierr)
-       call MPI_bcast(s_bv      ,1,MPIreal_t    ,par%root,par%comm,ierr)
-    else if (transfer_type == "fm") then
-       call MPI_bcast(kcut_fm   ,1,MPIinteger_t,par%root,par%comm,ierr)
-       call MPI_bcast(wght_fm   ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    end if
 
     call MPI_bcast(vform    ,MAX_STRING_LEN,MPIChar_t  ,par%root,par%comm,ierr)
     call MPI_bcast(vfile_mid,MAX_STRING_LEN,MPIChar_t  ,par%root,par%comm,ierr)
@@ -715,13 +562,7 @@ module namelist_mod
        write(iulog,*)'readnl: npart         = ',npart
 
        print *
-       write(iulog,*)"readnl: integration   = ",trim(integration)
-       if (integration == "explicit" ) then
-          write(iulog,*)"readnl: LF-trapazoidal freq= ",LFTfreq
-       endif
-       if (integration == "runge_kutta" .or. tstep_type>0 ) then
-          write(iulog,*)"readnl: rk_stage_user   = ",rk_stage_user
-       endif
+       write(iulog,*)"readnl: LF-trapazoidal freq= ",LFTfreq
        write(iulog,*)"readnl: tracer_advection_formulation  = ",tracer_advection_formulation
        write(iulog,*)"readnl: tstep_type    = ",tstep_type
        write(iulog,*)"readnl: vert_remap_q_alg  = ",vert_remap_q_alg
@@ -734,13 +575,6 @@ module namelist_mod
 
        write(iulog,*)"readnl: energy_fixer  = ",energy_fixer
        write(iulog,*)"readnl: runtype       = ",runtype
-       if (integration == "semi_imp") then
-          print *
-          write(iulog,*)"solver: precon_method  = ",precon_method
-          write(iulog,*)"solver: max iterations = ",maxits
-          write(iulog,*)"solver: tolerance      = ",tol
-          write(iulog,*)"solver: debug_level    = ",debug_level
-       endif
 
 
        if (hypervis_power /= 0)then
@@ -768,26 +602,6 @@ module namelist_mod
           write(iulog,*) "initial_total_mass = ",initial_total_mass
        end if
 
-       if (filter_freq>0 .or. filter_freq_advection>0) then
-       write(iulog,*)"Filter Method is ",filter_type
-       write(iulog,*)"filter: viscosity (mu)  = ",filter_mu
-       write(iulog,*)"filter: frequency       = ",filter_freq
-       write(iulog,*)"filter_advection: viscosity (mu)  = ",filter_mu_advection
-       write(iulog,*)"filter_advection: frequency       = ",filter_freq_advection
-
-       write(iulog,*)"filter: transfer_type   = ",transfer_type
-       if (transfer_type == "bv") then
-          print *
-          write(iulog,*)"with Boyd-Vandeven Transfer Fn Parameters:"
-          write(iulog,*)"     filter: order     (p)   = ",p_bv
-          write(iulog,*)"     filter: lag coeff (s)   = ",s_bv
-       else if (transfer_type == "fm") then
-          print *
-          write(iulog,*)"with Fischer-Mullen Transfer Fn Parameters:"
-          write(iulog,*)"     filter: clipped wave nos kc = ",kcut_fm
-          write(iulog,*)"     filter: amount of clipping  = ",wght_fm
-       end if
-       endif
        write(iulog,*)" analysis interpolation = ", interpolate_analysis
        if(any(interpolate_analysis)) then
           write(iulog,*)" analysis interp nlat = ",interp_nlat

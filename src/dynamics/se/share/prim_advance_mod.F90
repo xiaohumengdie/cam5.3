@@ -59,7 +59,7 @@ contains
   end subroutine prim_advance_init
 
   subroutine prim_advance_exp(elem, deriv, hvcoord, hybrid, dt, tl,  nets, nete)
-    use control_mod,       only: qsplit, tstep_type, rsplit, qsplit, moisture, integration
+    use control_mod,       only: qsplit, tstep_type, rsplit, qsplit, moisture
     use derivative_mod,    only: derivative_t, vorticity, divergence, gradient, gradient_wk
     use dimensions_mod,    only: np, nlev
     use element_mod,       only: element_t

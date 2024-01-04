@@ -10,7 +10,6 @@ module control_mod
 
   integer, public, parameter :: MAX_STRING_LEN=240
   integer, public, parameter :: MAX_FILE_LEN=240
-  character(len=MAX_STRING_LEN)    , public :: integration    ! time integration (explicit, semi_imp, or full imp)
 
 ! none of this is used anymore:
   integer, public, parameter :: TRACERADV_UGRADQ=0            !  u grad(Q) formulation
@@ -77,19 +76,10 @@ module control_mod
   real (kind=real_kind), public, parameter :: tol_limiter=1e-13
 
   integer              , public :: limiter_option = 0
-  character(len=8)     , public :: filter_type
-  character(len=8)     , public :: transfer_type
-  integer              , public :: filter_freq
-  integer              , public :: filter_freq_advection
-  integer              , public :: filter_counter
-  real (kind=real_kind), public :: filter_mu
-  real (kind=real_kind), public :: filter_mu_advection
-  character(len=MAX_STRING_LEN)    , public :: precon_method  ! if semi_implicit, type of preconditioner:
                                                   ! choices block_jacobi or identity
 
   integer              , public :: partmethod     ! partition methods
   character(len=MAX_STRING_LEN)    , public :: topology       ! options: "cube" is supported
-  character(len=MAX_STRING_LEN)    , public :: test_case      ! options: if cube: "swtc1","swtc2",or "swtc6"  
   integer              , public :: sub_case                   ! generic test case param 
   integer              , public :: tasknum
   integer              , public :: remapfreq      ! remap frequency of synopsis of system state (steps)
@@ -109,21 +99,6 @@ module control_mod
 
   character(len=MAX_STRING_LEN)    , public :: columnpackage
   character(len=MAX_STRING_LEN)    , public :: moisture
-  
-  integer              , public :: maxits         ! max iterations of solver
-  real (kind=real_kind), public :: tol            ! solver tolerance (convergence criteria)
-  integer              , public :: debug_level    ! debug level of CG solver
-
-
-  ! Boyd Vandeven filter Transfer fn parameters
-
-  real (kind=real_kind), public :: p_bv
-  real (kind=real_kind), public :: s_bv
-
-  ! Fischer-Mullen filter Transfer fn parameters
-
-  real (kind=real_kind), public :: wght_fm
-  integer              , public :: kcut_fm
 
   character(len=MAX_STRING_LEN)    ,public  :: vfile_int=""  ! vertical formulation (ecmwf,ccm1)
   character(len=MAX_STRING_LEN)    ,public  :: vfile_mid=""  ! vertical grid spacing (equal,unequal)
