@@ -111,7 +111,7 @@ CONTAINS
   !  to prevent repeated allocation/initialization
   !
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    use physical_constants, only : kappa
+    use physconst,      only : kappa => cappa
     use derivative_mod, only : gradient_sphere, ugradv_sphere
     use edge_mod, only : edgevpack, edgevunpack
     use bndry_mod, only : bndry_exchange

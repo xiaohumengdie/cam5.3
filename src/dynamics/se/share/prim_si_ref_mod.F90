@@ -3,7 +3,8 @@
 #endif
 
 module prim_si_ref_mod
-  use kinds, only: r8 => real_kind, iulog
+  use shr_kind_mod,   only: r8=>shr_kind_r8
+  use cam_logfile,    only: iulog
   use dimensions_mod, only: plev => nlev, plevp => nlevp
   implicit none
   private
@@ -12,14 +13,13 @@ module prim_si_ref_mod
 contains
 
   subroutine prim_set_mass(elem, tl,hybrid,hvcoord,nets,nete)
-  use kinds, only : real_kind
-  use control_mod, only : initial_total_mass
-  use physical_constants, only : g
-  use element_mod, only : element_t
-  use time_mod, only : timelevel_t 
-  use hybvcoord_mod, only : hvcoord_t 
-  use hybrid_mod, only : hybrid_t
-  use dimensions_mod, only : np
+  use control_mod,      only : initial_total_mass
+  use physconst,        only : g => gravit
+  use element_mod,      only : element_t
+  use time_mod,         only : timelevel_t 
+  use hybvcoord_mod,    only : hvcoord_t 
+  use hybrid_mod,       only : hybrid_t
+  use dimensions_mod,   only : np
   use global_norms_mod, only : global_integral 
 
   type (element_t), intent(inout) :: elem(:)
@@ -29,8 +29,8 @@ contains
   integer,intent(in)             :: nets,nete
   
   ! local 
-  real (kind=real_kind)  :: tmp(np,np,nets:nete)
-  real (kind=real_kind)  :: scale,mass0
+  real (kind=r8)  :: tmp(np,np,nets:nete)
+  real (kind=r8)  :: scale,mass0
   integer :: n0,nm1,np1,ie
 
   if (initial_total_mass == 0) return;

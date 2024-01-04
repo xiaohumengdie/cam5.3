@@ -10,7 +10,6 @@ module dp_coupling
   use dyn_comp,       only: dyn_export_t, dyn_import_t, TimeLevel
   use dyn_grid,       only: get_gcol_block_d
   use element_mod,    only: element_t
-  use kinds,          only: real_kind, int_kind
   use shr_kind_mod,   only: r8=>shr_kind_r8
   use physics_types,  only: physics_state, physics_tend
   
@@ -55,31 +54,31 @@ CONTAINS
 
 ! LOCAL VARIABLES
     type(element_t), pointer :: elem(:)               ! pointer to dyn_out element array
-    integer (kind=int_kind)  :: ie               ! indices over elements
-    integer (kind=int_kind)  :: lchnk, icol, ilyr      ! indices over chunks, columns, layers
-    real (kind=real_kind)    :: ps_tmp(npsq,nelemd)         ! temporary array to hold ps
-    real (kind=real_kind)    :: phis_tmp(npsq,nelemd)       ! temporary array to hold phis  
-    real (kind=real_kind)    :: T_tmp(npsq,pver,nelemd)     ! temporary array to hold T
-    real (kind=real_kind)    :: uv_tmp(npsq,2,pver,nelemd)     ! temporary array to hold u and v
-    real (kind=real_kind)    :: q_tmp(npsq,pver,pcnst,nelemd) ! temporary to hold advected constituents
-    real (kind=real_kind)    :: omega_tmp(npsq,pver,nelemd) ! temporary array to hold omega
+    integer                  :: ie               ! indices over elements
+    integer                  :: lchnk, icol, ilyr      ! indices over chunks, columns, layers
+    real (kind=r8)    :: ps_tmp(npsq,nelemd)         ! temporary array to hold ps
+    real (kind=r8)    :: phis_tmp(npsq,nelemd)       ! temporary array to hold phis  
+    real (kind=r8)    :: T_tmp(npsq,pver,nelemd)     ! temporary array to hold T
+    real (kind=r8)    :: uv_tmp(npsq,2,pver,nelemd)     ! temporary array to hold u and v
+    real (kind=r8)    :: q_tmp(npsq,pver,pcnst,nelemd) ! temporary to hold advected constituents
+    real (kind=r8)    :: omega_tmp(npsq,pver,nelemd) ! temporary array to hold omega
 
     ! Frontogenesis
-    real (kind=real_kind), allocatable :: frontgf(:,:,:) ! temporary arrays to hold frontogenesis
-    real (kind=real_kind), allocatable :: frontga(:,:,:) !   function (frontgf) and angle (frontga)
+    real (kind=r8), allocatable :: frontgf(:,:,:) ! temporary arrays to hold frontogenesis
+    real (kind=r8), allocatable :: frontga(:,:,:) !   function (frontgf) and angle (frontga)
     ! Pointers to pbuf
     real (kind=r8),        pointer     :: pbuf_frontgf(:,:)
     real (kind=r8),        pointer     :: pbuf_frontga(:,:)
 
     integer :: ncols,i,j,ierr
 
-    integer (kind=int_kind)  :: ioff, m
+    integer :: ioff, m
     integer :: pgcols(pcols), idmb1(1), idmb2(1), idmb3(1)
     integer :: tsize                 ! amount of data per grid point passed to physics
     integer :: bpter(npsq,0:pver)    ! offsets into block buffer for packing data
     integer :: cpter(pcols,0:pver)   ! offsets into chunk buffer for unpacking data
 
-    real (kind=real_kind), allocatable, dimension(:) :: bbuffer, cbuffer ! transpose buffers
+    real (kind=r8), allocatable, dimension(:) :: bbuffer, cbuffer ! transpose buffers
     integer :: tl_f
 
     type(physics_buffer_desc), pointer :: pbuf_chnk(:)
@@ -317,21 +316,21 @@ CONTAINS
     ! LOCAL VARIABLES
     integer :: ic , ncols                            ! index
     type(element_t), pointer :: elem(:)               ! pointer to dyn_in element array
-    integer (kind=int_kind)  :: ie, iep               ! indices over elements
-    integer (kind=int_kind)  :: lchnk, icol, ilyr      ! indices over chunks, columns, layers
+    integer                  :: ie, iep               ! indices over elements
+    integer                  :: lchnk, icol, ilyr      ! indices over chunks, columns, layers
 
-    real (kind=real_kind)    :: T_tmp(npsq,pver,nelemd)       ! temporary array to hold T
-    real (kind=real_kind)    :: uv_tmp(npsq,2,pver,nelemd)    ! temporary array to hold uv
-!   real (kind=real_kind)    :: omega_tmp(npsq,pver,nelemd)   ! temporary array to hold omega
-    real (kind=real_kind)    :: q_tmp(npsq,pver,pcnst,nelemd) ! temporary array to hold q
-    integer (kind=int_kind)  :: ioff, m, i, j, k
-    integer(kind=int_kind)   :: pgcols(pcols), idmb1(1), idmb2(1), idmb3(1)
+    real (kind=r8)    :: T_tmp(npsq,pver,nelemd)       ! temporary array to hold T
+    real (kind=r8)    :: uv_tmp(npsq,2,pver,nelemd)    ! temporary array to hold uv
+!   real (kind=r8)    :: omega_tmp(npsq,pver,nelemd)   ! temporary array to hold omega
+    real (kind=r8)    :: q_tmp(npsq,pver,pcnst,nelemd) ! temporary array to hold q
+    integer                  :: ioff, m, i, j, k
+    integer                  :: pgcols(pcols), idmb1(1), idmb2(1), idmb3(1)
 
     integer :: tsize                 ! amount of data per grid point passed to physics
     integer :: cpter(pcols,0:pver)   ! offsets into chunk buffer for packing data
     integer :: bpter(npsq,0:pver)    ! offsets into block buffer for unpacking data
 
-    real (kind=real_kind), allocatable, dimension(:) :: bbuffer, cbuffer ! transpose buffers
+    real (kind=r8), allocatable, dimension(:) :: bbuffer, cbuffer ! transpose buffers
 
     if (iam .lt. par%nprocs) then
        elem => dyn_in%elem

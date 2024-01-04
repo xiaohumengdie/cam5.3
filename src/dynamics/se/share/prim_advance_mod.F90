@@ -63,10 +63,10 @@ contains
     use hybrid_mod,        only: hybrid_t
     use time_mod,          only: TimeLevel_t,  timelevel_qdp
     use dimensions_mod,    only: nlevp
-    use bndry_mod, only : bndry_exchange
-    use edgetype_mod, only : EdgeBuffer_t
-    use edge_mod, only : edgevpack, edgevunpack, initEdgeBuffer
-    use reduction_mod, only : reductionbuffer_ordered_1d_t
+    use bndry_mod,        only : bndry_exchange
+    use edgetype_mod,     only : EdgeBuffer_t
+    use edge_mod,         only : edgevpack, edgevunpack, initEdgeBuffer
+    use reduction_mod,    only : reductionbuffer_ordered_1d_t
 
 
     implicit none
@@ -285,12 +285,12 @@ contains
 
 
   subroutine applyCAMforcing(elem,hvcoord,np1,np1_qdp,dt_q,nets,nete)
-    use dimensions_mod,         only: np, nc, nlev, qsize
-    use element_mod,            only: element_t
-    use hybvcoord_mod, only : hvcoord_t
-    use control_mod, only : moisture, tracer_grid_type
-    use control_mod, only : TRACER_GRIDTYPE_GLL
-    use physical_constants, only: Cp
+    use dimensions_mod, only : np, nc, nlev, qsize
+    use element_mod,    only : element_t
+    use hybvcoord_mod,  only : hvcoord_t
+    use control_mod,    only : moisture, tracer_grid_type
+    use control_mod,    only : TRACER_GRIDTYPE_GLL
+    use physconst,      only : Cp=>cpair
     type (element_t)     , intent(inout) :: elem(:)
     real (kind=r8), intent(in) :: dt_q
     type (hvcoord_t), intent(in)      :: hvcoord
@@ -378,17 +378,17 @@ contains
     !  For correct scaling, dt2 should be the same 'dt2' used in the leapfrog advace
     !
     !
-    use dimensions_mod, only : np, np, nlev
-    use control_mod, only : nu, nu_div, nu_s, hypervis_order, hypervis_subcycle, nu_p, nu_top, psurf_vis
-    use hybrid_mod, only : hybrid_t
+    use dimensions_mod,only : np, np, nlev
+    use control_mod,   only : nu, nu_div, nu_s, hypervis_order, hypervis_subcycle, nu_p, nu_top, psurf_vis
+    use hybrid_mod,    only : hybrid_t
     use hybvcoord_mod, only : hvcoord_t
-    use element_mod, only : element_t
-    use derivative_mod, only : derivative_t, laplace_sphere_wk, vlaplace_sphere_wk
-    use edgetype_mod, only : EdgeBuffer_t
-    use edge_mod, only : edgevpack, edgevunpack
-    use bndry_mod, only : bndry_exchange
+    use element_mod,   only : element_t
+    use derivative_mod,only : derivative_t, laplace_sphere_wk, vlaplace_sphere_wk
+    use edgetype_mod,  only : EdgeBuffer_t
+    use edge_mod,      only : edgevpack, edgevunpack
+    use bndry_mod,     only : bndry_exchange
     use viscosity_mod, only : biharmonic_wk_dp3d
-    use physical_constants, only: Cp
+   use physconst,      only : Cp=>cpair
 
 
 
@@ -674,16 +674,16 @@ contains
   !
   !
   use dimensions_mod, only : np, np, nlev
-  use control_mod, only : nu, nu_div, nu_s, hypervis_order, hypervis_subcycle, nu_p, nu_top, psurf_vis
-  use hybrid_mod, only : hybrid_t
-  use hybvcoord_mod, only : hvcoord_t
-  use element_mod, only : element_t
+  use control_mod,    only : nu, nu_div, nu_s, hypervis_order, hypervis_subcycle, nu_p, nu_top, psurf_vis
+  use hybrid_mod,     only : hybrid_t
+  use hybvcoord_mod,  only : hvcoord_t
+  use element_mod,    only : element_t
   use derivative_mod, only : derivative_t, laplace_sphere_wk, vlaplace_sphere_wk
-  use edgetype_mod, only : EdgeBuffer_t
-  use edge_mod, only : edgevpack, edgevunpack
-  use bndry_mod, only : bndry_exchange
-  use viscosity_mod, only : biharmonic_wk
-  use physical_constants, only: Cp
+  use edgetype_mod,   only : EdgeBuffer_t
+  use edge_mod,       only : edgevpack, edgevunpack
+  use bndry_mod,      only : bndry_exchange
+  use viscosity_mod,  only : biharmonic_wk
+  use physconst,      only : Cp=>cpair
 !  use time_mod, only : TimeLevel_t
   implicit none
 
@@ -975,17 +975,17 @@ contains
   !
   ! ===================================
   use dimensions_mod, only : np, np, nlev
-  use hybrid_mod, only : hybrid_t
-  use element_mod, only : element_t
+  use hybrid_mod,     only : hybrid_t
+  use element_mod,    only : element_t
   use derivative_mod, only : derivative_t, divergence_sphere, gradient_sphere, vorticity_sphere
-  use edge_mod, only : edgevpack, edgevunpack
-  use bndry_mod, only : bndry_exchange
-  use control_mod, only : moisture, qsplit, use_cpstar, rsplit
-  use hybvcoord_mod, only : hvcoord_t
+  use edge_mod,       only : edgevpack, edgevunpack
+  use bndry_mod,      only : bndry_exchange
+  use control_mod,    only : moisture, qsplit, use_cpstar, rsplit
+  use hybvcoord_mod,  only : hvcoord_t
 
-  use physical_constants, only : cp, cpwater_vapor, Rgas, kappa
-  use physics_mod, only : virtual_specific_heat, virtual_temperature
-  use prim_si_mod, only : preq_vertadv, preq_omega_ps, preq_hydrostatic
+  use physconst,      only : Rgas => rair, Cp=>cpair, Cpwater_vapor => cpwv, kappa => cappa
+  use physics_mod,    only : virtual_specific_heat, virtual_temperature
+  use prim_si_mod,    only : preq_vertadv, preq_omega_ps, preq_hydrostatic
 
 
   implicit none

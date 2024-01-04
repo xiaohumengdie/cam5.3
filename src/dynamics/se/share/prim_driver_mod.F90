@@ -483,13 +483,13 @@ contains
 !
 !  fixer will add a constant to the temperature so E(n=2) = E(n=1)
 !
-    use parallel_mod, only: global_shared_buf, global_shared_sum
-    use hybvcoord_mod, only : hvcoord_t
-    use physical_constants, only : Cp
-    use time_mod, only : timelevel_t
-    use control_mod, only : use_cpstar, energy_fixer
-    use hybvcoord_mod, only : hvcoord_t
-    use global_norms_mod, only: wrap_repro_sum
+    use parallel_mod,    only : global_shared_buf, global_shared_sum
+    use hybvcoord_mod,   only : hvcoord_t
+    use physconst,       only : Cp=>cpair
+    use time_mod,        only : timelevel_t
+    use control_mod,     only : use_cpstar, energy_fixer
+    use hybvcoord_mod,   only : hvcoord_t
+    use global_norms_mod,only : wrap_repro_sum
     type (hybrid_t), intent(in)           :: hybrid  ! distributed parallel structure (shared)
     integer :: t2,n,nets,nete
     type (element_t)     , intent(inout), target :: elem(:)

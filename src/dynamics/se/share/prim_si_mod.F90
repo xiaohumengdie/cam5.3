@@ -12,7 +12,7 @@ module prim_si_mod
   public :: preq_pressure
   public :: preq_vertadv
 contains
-	
+
 ! ==========================================================
 ! Implicit system for semi-implicit primitive equations.
 ! ==========================================================
@@ -20,24 +20,24 @@ contains
 
   subroutine preq_vertadv(T, v, eta_dot_dp_deta, rpdel, &
        T_vadv, v_vadv)
-    use kinds,              only : real_kind
+    use shr_kind_mod,       only : r8=>shr_kind_r8
     use dimensions_mod,     only : nlev, np, nlevp
     implicit none
     
-    real (kind=real_kind), intent(in) :: T(np,np,nlev)
-    real (kind=real_kind), intent(in) :: v(np,np,2,nlev)
-    real (kind=real_kind), intent(in) :: eta_dot_dp_deta(np,np,nlevp)
-    real (kind=real_kind), intent(in) :: rpdel(np,np,nlev)
+    real (kind=r8), intent(in) :: T(np,np,nlev)
+    real (kind=r8), intent(in) :: v(np,np,2,nlev)
+    real (kind=r8), intent(in) :: eta_dot_dp_deta(np,np,nlevp)
+    real (kind=r8), intent(in) :: rpdel(np,np,nlev)
 
-    real (kind=real_kind), intent(out) :: T_vadv(np,np,nlev)
-    real (kind=real_kind), intent(out) :: v_vadv(np,np,2,nlev)
+    real (kind=r8), intent(out) :: T_vadv(np,np,nlev)
+    real (kind=r8), intent(out) :: v_vadv(np,np,2,nlev)
 
     ! ========================
     ! Local Variables
     ! ========================
 
     integer :: i,j,k
-    real (kind=real_kind) :: facp, facm
+    real (kind=r8) :: facp, facm
 
 #if (defined COLUMN_OPENMP)
 !$omp parallel do private(k,j,i,facp,facm)
@@ -52,7 +52,7 @@ contains
 
        k=1
        do i=1,np 
-          facp            = (0.5_real_kind*rpdel(i,j,k))*eta_dot_dp_deta(i,j,k+1)
+          facp            = (0.5_r8*rpdel(i,j,k))*eta_dot_dp_deta(i,j,k+1)
           T_vadv(i,j,k)   = facp*(T(i,j,k+1)- T(i,j,k))
           v_vadv(i,j,1,k) = facp*(v(i,j,1,k+1)- v(i,j,1,k))
           v_vadv(i,j,2,k) = facp*(v(i,j,2,k+1)- v(i,j,2,k))
@@ -66,8 +66,8 @@ contains
 
        do k=2,nlev-1
           do i=1,np
-             facp            = (0.5_real_kind*rpdel(i,j,k))*eta_dot_dp_deta(i,j,k+1)
-             facm            = (0.5_real_kind*rpdel(i,j,k))*eta_dot_dp_deta(i,j,k)
+             facp            = (0.5_r8*rpdel(i,j,k))*eta_dot_dp_deta(i,j,k+1)
+             facm            = (0.5_r8*rpdel(i,j,k))*eta_dot_dp_deta(i,j,k)
              T_vadv(i,j,k)   = facp*(T(i,j,k+1)- T(i,j,k)) + &
                   facm*(T(i,j,k)- T(i,j,k-1))
              v_vadv(i,j,1,k) = facp*(v(i,j,1,k+1)- v(i,j,1,k)) + &
@@ -85,7 +85,7 @@ contains
 
        k=nlev
        do i=1,np
-          facm            = (0.5_real_kind*rpdel(i,j,k))*eta_dot_dp_deta(i,j,k)
+          facm            = (0.5_r8*rpdel(i,j,k))*eta_dot_dp_deta(i,j,k)
           T_vadv(i,j,k)   = facm*(T(i,j,k)- T(i,j,k-1))
           v_vadv(i,j,1,k) = facm*(v(i,j,1,k)- v(i,j,1,k-1))
           v_vadv(i,j,2,k) = facm*(v(i,j,2,k)- v(i,j,2,k-1))
@@ -113,26 +113,26 @@ contains
 
   subroutine preq_omegap(div     ,vgrad_ps,pdel    ,rpmid, &
        hybm    ,hybd    ,omegap   )
-    use kinds, only : real_kind
+    use shr_kind_mod,   only : r8=>shr_kind_r8
     use dimensions_mod, only : np, nlev
     implicit none
 
 
     !------------------------------Arguments---------------------------------------------------------------
-    real(kind=real_kind), intent(in) :: div(np,np,nlev)      ! divergence
-    real(kind=real_kind), intent(in) :: vgrad_ps(np,np,nlev) ! v.grad(ps)
-    real(kind=real_kind), intent(in) :: pdel(np,np,nlev)     ! layer thicknesses (pressure)
-    real(kind=real_kind), intent(in) :: rpmid(np,np,nlev)    ! 1./pmid
-    real(kind=real_kind), intent(in) :: hybm(nlev)           ! Hybrid B coefficient on mid levels
-    real(kind=real_kind), intent(in) :: hybd(nlev)           ! Hybrid dB coefficient on mid levels
-    real(kind=real_kind), intent(out):: omegap(np,np,nlev)   ! vertical pressure velocity
+    real(kind=r8), intent(in) :: div(np,np,nlev)      ! divergence
+    real(kind=r8), intent(in) :: vgrad_ps(np,np,nlev) ! v.grad(ps)
+    real(kind=r8), intent(in) :: pdel(np,np,nlev)     ! layer thicknesses (pressure)
+    real(kind=r8), intent(in) :: rpmid(np,np,nlev)    ! 1./pmid
+    real(kind=r8), intent(in) :: hybm(nlev)           ! Hybrid B coefficient on mid levels
+    real(kind=r8), intent(in) :: hybd(nlev)           ! Hybrid dB coefficient on mid levels
+    real(kind=r8), intent(out):: omegap(np,np,nlev)   ! vertical pressure velocity
     !------------------------------------------------------------------------------------------------------
 
     !---------------------------Local workspace-----------------------------
     integer i,j,k                         ! longitude, level indices
-    real(kind=real_kind) term             ! one half of basic term in omega/p summation 
-    real(kind=real_kind) Ckk              ! diagonal term of energy conversion matrix
-    real(kind=real_kind) suml(np,np)      ! partial sum over l = (1, k-1)
+    real(kind=r8) term             ! one half of basic term in omega/p summation 
+    real(kind=r8) Ckk              ! diagonal term of energy conversion matrix
+    real(kind=r8) suml(np,np)      ! partial sum over l = (1, k-1)
     !-----------------------------------------------------------------------
 
     ! =========================
@@ -141,7 +141,7 @@ contains
 
     do j=1,np
        do i=1,np
-          suml(i,j)=0.0_real_kind
+          suml(i,j)=0.0_r8
        end do
     end do
 
@@ -152,7 +152,7 @@ contains
     do k=1,nlev
        do j=1,np
           do i=1,np
-             Ckk       = 0.5_real_kind
+             Ckk       = 0.5_r8
              term      = Ckk*(div(i,j,k)*pdel(i,j,k) + vgrad_ps(i,j,k)*hybd(k))
              suml(i,j) = suml(i,j) + term
              omegap(i,j,k) = rpmid(i,j,k)*(hybm(k)*vgrad_ps(i,j,k) - suml(i,j))
@@ -171,25 +171,25 @@ contains
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
   subroutine preq_omega_ps(omega_p,hvcoord,p,vgrad_p,divdp)
-    use kinds, only : real_kind
+    use shr_kind_mod,   only : r8=>shr_kind_r8
     use dimensions_mod, only : np, nlev
-    use hybvcoord_mod, only : hvcoord_t
+    use hybvcoord_mod,  only : hvcoord_t
     implicit none
 
 
     !------------------------------Arguments---------------------------------------------------------------
-    real(kind=real_kind), intent(in) :: divdp(np,np,nlev)      ! divergence
-    real(kind=real_kind), intent(in) :: vgrad_p(np,np,nlev) ! v.grad(p)
-    real(kind=real_kind), intent(in) :: p(np,np,nlev)     ! layer thicknesses (pressure)
+    real(kind=r8), intent(in) :: divdp(np,np,nlev)      ! divergence
+    real(kind=r8), intent(in) :: vgrad_p(np,np,nlev) ! v.grad(p)
+    real(kind=r8), intent(in) :: p(np,np,nlev)     ! layer thicknesses (pressure)
     type (hvcoord_t),     intent(in) :: hvcoord
-    real(kind=real_kind), intent(out):: omega_p(np,np,nlev)   ! vertical pressure velocity
+    real(kind=r8), intent(out):: omega_p(np,np,nlev)   ! vertical pressure velocity
     !------------------------------------------------------------------------------------------------------
 
     !---------------------------Local workspace-----------------------------
     integer i,j,k                         ! longitude, level indices
-    real(kind=real_kind) term             ! one half of basic term in omega/p summation 
-    real(kind=real_kind) Ckk,Ckl          ! diagonal term of energy conversion matrix
-    real(kind=real_kind) suml(np,np)      ! partial sum over l = (1, k-1)
+    real(kind=r8) term             ! one half of basic term in omega/p summation 
+    real(kind=r8) Ckk,Ckl          ! diagonal term of energy conversion matrix
+    real(kind=r8) suml(np,np)      ! partial sum over l = (1, k-1)
     !-----------------------------------------------------------------------
 
 #if (defined COLUMN_OPENMP)
@@ -241,29 +241,29 @@ contains
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
   subroutine preq_omega_lnps(omega_p,hvcoord,ps,p,dp,vgrad_lnps,div)
-    use kinds, only : real_kind
+    use shr_kind_mod,   only : r8=>shr_kind_r8
     use dimensions_mod, only : np, nlev
-    use hybvcoord_mod, only : hvcoord_t
+    use hybvcoord_mod,  only : hvcoord_t
     implicit none
 
 
     !------------------------------Arguments---------------------------------------------------------------
-    real(kind=real_kind), intent(in) :: div(np,np,nlev)      ! divergence
-    real(kind=real_kind), intent(in) :: vgrad_lnps(np,np,nlev) ! v.grad(ps)
-    real(kind=real_kind), intent(in) :: p(np,np,nlev)      ! pressure
-    real(kind=real_kind), intent(in) :: dp(np,np,nlev)     ! dp/dn
-    real(kind=real_kind), intent(in) :: ps(np,np)
+    real(kind=r8), intent(in) :: div(np,np,nlev)      ! divergence
+    real(kind=r8), intent(in) :: vgrad_lnps(np,np,nlev) ! v.grad(ps)
+    real(kind=r8), intent(in) :: p(np,np,nlev)      ! pressure
+    real(kind=r8), intent(in) :: dp(np,np,nlev)     ! dp/dn
+    real(kind=r8), intent(in) :: ps(np,np)
     type (hvcoord_t),     intent(in) :: hvcoord
-    real(kind=real_kind), intent(out):: omega_p(np,np,nlev)   ! vertical pressure velocity
+    real(kind=r8), intent(out):: omega_p(np,np,nlev)   ! vertical pressure velocity
     !------------------------------------------------------------------------------------------------------
 
     !---------------------------Local workspace-----------------------------
     integer i,j,k                         ! longitude, level indices
-    real(kind=real_kind) term             ! one half of basic term in omega/p summation 
-    real(kind=real_kind) Ckk,Ckl          ! diagonal term of energy conversion matrix
-    real(kind=real_kind) suml(np,np)      ! partial sum over l = (1, k-1)
+    real(kind=r8) term             ! one half of basic term in omega/p summation 
+    real(kind=r8) Ckk,Ckl          ! diagonal term of energy conversion matrix
+    real(kind=r8) suml(np,np)      ! partial sum over l = (1, k-1)
     !-----------------------------------------------------------------------
-       do j=1,np	
+       do j=1,np
           do i=1,np
              ckk = 0.5d0/p(i,j,1)
              term = div(i,j,1)*dp(i,j,1) + vgrad_lnps(i,j,1)*ps(i,j)*hvcoord%hybd(1)
@@ -309,26 +309,26 @@ contains
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
   subroutine preq_hydrostatic(phi,phis,T_v,p,dp)
-    use kinds, only : real_kind
-    use dimensions_mod, only : np, nlev
-    use physical_constants, only : rgas
+    use shr_kind_mod,       only : r8=>shr_kind_r8
+    use dimensions_mod,     only : np, nlev
+    use physconst,          only : Rgas => rair
 !    use hybvcoord_mod, only : hvcoord_t
     implicit none
 
 
     !------------------------------Arguments---------------------------------------------------------------
-    real(kind=real_kind), intent(out) :: phi(np,np,nlev)     
-    real(kind=real_kind), intent(in) :: phis(np,np)
-    real(kind=real_kind), intent(in) :: T_v(np,np,nlev)
-    real(kind=real_kind), intent(in) :: p(np,np,nlev)   
-    real(kind=real_kind), intent(in) :: dp(np,np,nlev)  
+    real(kind=r8), intent(out) :: phi(np,np,nlev)     
+    real(kind=r8), intent(in) :: phis(np,np)
+    real(kind=r8), intent(in) :: T_v(np,np,nlev)
+    real(kind=r8), intent(in) :: p(np,np,nlev)   
+    real(kind=r8), intent(in) :: dp(np,np,nlev)  
  !   type (hvcoord_t),     intent(in) :: hvcoord
     !------------------------------------------------------------------------------------------------------
 
     !---------------------------Local workspace-----------------------------
     integer i,j,k                         ! longitude, level indices
-    real(kind=real_kind) Hkk,Hkl          ! diagonal term of energy conversion matrix
-    real(kind=real_kind), dimension(np,np,nlev) :: phii       ! Geopotential at interfaces
+    real(kind=r8) Hkk,Hkl          ! diagonal term of energy conversion matrix
+    real(kind=r8), dimension(np,np,nlev) :: phii       ! Geopotential at interfaces
     !-----------------------------------------------------------------------
 
 #if (defined COLUMN_OPENMP)
@@ -382,7 +382,7 @@ subroutine geopotential_t(                                 &
 !
 !-----------------------------------------------------------------------
     use dimensions_mod,     only : nlev, nlevp, np
-    use kinds, only : real_kind
+    use shr_kind_mod,       only : r8=>shr_kind_r8
     implicit none
 
 !------------------------------Arguments--------------------------------
@@ -391,25 +391,25 @@ subroutine geopotential_t(                                 &
 
 
 
-    real(real_kind), intent(in) :: pmid (np*np,nlev)    ! Midpoint pressures
-    real(real_kind), intent(in) :: pdel (np*np,nlev)    ! layer thickness
-    real(real_kind), intent(in) :: tv    (np*np,nlev)    ! temperature
-    real(real_kind), intent(in) :: rair                 ! Gas constant for dry air
-    ! real(real_kind), intent(in) :: gravit               ! Acceleration of gravity
-    ! real(real_kind), intent(in) :: zvir                 ! rh2o/rair - 1
+    real(r8), intent(in) :: pmid (np*np,nlev)    ! Midpoint pressures
+    real(r8), intent(in) :: pdel (np*np,nlev)    ! layer thickness
+    real(r8), intent(in) :: tv    (np*np,nlev)    ! temperature
+    real(r8), intent(in) :: rair                 ! Gas constant for dry air
+    ! real(r8), intent(in) :: gravit               ! Acceleration of gravity
+    ! real(r8), intent(in) :: zvir                 ! rh2o/rair - 1
 
 ! Output arguments
 
-    real(real_kind), intent(out) :: zm(np*np,nlev)      ! Geopotential height at mid level
+    real(r8), intent(out) :: zm(np*np,nlev)      ! Geopotential height at mid level
 !
 !---------------------------Local variables-----------------------------
     integer :: ncol=np*np             ! Number of longitudes
 
     integer  :: i,k                ! Lon, level indices
-    real(real_kind) :: hkk(np*np)         ! diagonal element of hydrostatic matrix
-    real(real_kind) :: hkl(np*np)         ! off-diagonal element
-    real(real_kind) :: rog                ! Rair / gravit
-    real(real_kind) :: zi(np*np,nlevp)     ! Height above surface at interfaces
+    real(r8) :: hkk(np*np)         ! diagonal element of hydrostatic matrix
+    real(r8) :: hkl(np*np)         ! off-diagonal element
+    real(r8) :: rog                ! Rair / gravit
+    real(r8) :: zi(np*np,nlevp)     ! Height above surface at interfaces
 !
 !-----------------------------------------------------------------------
 !
@@ -418,7 +418,7 @@ subroutine geopotential_t(                                 &
 
 ! The surface height is zero by definition.
     do i = 1,ncol
-       zi(i,nlevp) = 0.0_real_kind
+       zi(i,nlevp) = 0.0_r8
     end do
 
 ! Compute zi, zm from bottom up. 
@@ -427,7 +427,7 @@ subroutine geopotential_t(                                 &
 ! First set hydrostatic elements consistent with dynamics
        do i = 1,ncol
           hkl(i) = pdel(i,k) / pmid(i,k)
-          hkk(i) = 0.5_real_kind * hkl(i)
+          hkk(i) = 0.5_r8 * hkl(i)
        end do
 
 ! Now compute tv, zm, zi
@@ -467,21 +467,21 @@ subroutine geopotential_t(                                 &
   subroutine preq_pressure (ps0,  ps,               &
        hyai, hybi, hyam, hybm, &
        pint, pmid, pdel)
-    use kinds, only : real_kind
+    use shr_kind_mod,   only : r8=>shr_kind_r8
     use dimensions_mod, only : np, nlev, nlevp
     implicit none
 
     !-----------------------------------------------------------------------
 
-    real(kind=real_kind), intent(in)  :: ps0                ! Hybrid coordinate reference pressure (pascals)
-    real(kind=real_kind), intent(in)  :: ps(np,np)          ! Surface pressure (pascals)
-    real(kind=real_kind), intent(in)  :: hyai(nlevp)        ! Hybrid interface A coefficients
-    real(kind=real_kind), intent(in)  :: hybi(nlevp)        ! Hybrid interface B coefficients
-    real(kind=real_kind), intent(in)  :: hyam(nlev)         ! Hybrid midpoint  A coefficients
-    real(kind=real_kind), intent(in)  :: hybm(nlev)         ! Hybrid midpoint  B coefficients
-    real(kind=real_kind), intent(out) :: pint(np,np,nlevp)  ! Pressure at model interfaces
-    real(kind=real_kind), intent(out) :: pmid(np,np,nlev)   ! Pressure at model levels
-    real(kind=real_kind), intent(out) :: pdel(np,np,nlev)   ! Layer thickness (pint(k+1) - pint(k))
+    real(kind=r8), intent(in)  :: ps0                ! Hybrid coordinate reference pressure (pascals)
+    real(kind=r8), intent(in)  :: ps(np,np)          ! Surface pressure (pascals)
+    real(kind=r8), intent(in)  :: hyai(nlevp)        ! Hybrid interface A coefficients
+    real(kind=r8), intent(in)  :: hybi(nlevp)        ! Hybrid interface B coefficients
+    real(kind=r8), intent(in)  :: hyam(nlev)         ! Hybrid midpoint  A coefficients
+    real(kind=r8), intent(in)  :: hybm(nlev)         ! Hybrid midpoint  B coefficients
+    real(kind=r8), intent(out) :: pint(np,np,nlevp)  ! Pressure at model interfaces
+    real(kind=r8), intent(out) :: pmid(np,np,nlev)   ! Pressure at model levels
+    real(kind=r8), intent(out) :: pdel(np,np,nlev)   ! Layer thickness (pint(k+1) - pint(k))
     !-----------------------------------------------------------------------
 
     !---------------------------Local workspace-----------------------------

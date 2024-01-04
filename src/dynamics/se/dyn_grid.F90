@@ -301,7 +301,6 @@ end subroutine dyn_grid_init
   !
   subroutine get_gcol_block_d(gcol,cnt,blockid,bcid,localblockid)
     use dimensions_mod, only: nelemd, nelem
-    use kinds,          only: int_kind
     use cam_abortutils, only: endrun
     !----------------------------------------------------------------------- 
     ! 

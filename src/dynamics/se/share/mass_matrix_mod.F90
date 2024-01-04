@@ -3,14 +3,14 @@
 #endif
 
 module mass_matrix_mod
-  use kinds, only : real_kind
+  use shr_kind_mod,   only : r8=>shr_kind_r8
   use dimensions_mod, only : np, nelemd
   use quadrature_mod, only : quadrature_t, gauss ,gausslobatto
-  use element_mod, only : element_t
-  use parallel_mod, only : parallel_t
-  use edgetype_mod, only : edgebuffer_t
-  use edge_mod, only : edgevpack,edgevunpack, freeedgebuffer,initedgebuffer  
-  use bndry_mod, only : bndry_exchange
+  use element_mod,    only : element_t
+  use parallel_mod,   only : parallel_t
+  use edgetype_mod,   only : edgebuffer_t
+  use edge_mod,       only : edgevpack,edgevunpack, freeedgebuffer,initedgebuffer  
+  use bndry_mod,      only : bndry_exchange
 implicit none
 private
 
@@ -31,7 +31,7 @@ contains
 
     type (EdgeBuffer_t)    :: edge
 
-    real(kind=real_kind)  da                     ! area element
+    real(kind=r8)  da                     ! area element
 
     type (quadrature_t) :: gp
 
