@@ -94,7 +94,7 @@ contains
     integer :: n,i,j,lx,lenx
 
 
-    call t_startf('prim_advance_exp')
+!    call t_startf('prim_advance_exp')
     nm1   = tl%nm1
     n0    = tl%n0
     np1   = tl%np1
@@ -284,7 +284,7 @@ contains
 
     call t_stopf('advance_hypervis')
 
-    call t_stopf('prim_advance_exp')
+!    call t_stopf('prim_advance_exp')
   end subroutine prim_advance_exp
 
 

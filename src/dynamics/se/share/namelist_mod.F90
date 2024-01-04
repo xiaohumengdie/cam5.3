@@ -292,7 +292,6 @@ module namelist_mod
     call MPI_bcast(statefreq ,1,mpi_integer,par%root,par%comm,ierr)
     call MPI_bcast(multilevel ,1,mpi_integer,par%root,par%comm,ierr)
     call MPI_bcast(useframes ,1,mpi_integer,par%root,par%comm,ierr)
-    call MPI_bcast(runtype   ,1,mpi_integer,par%root,par%comm,ierr)
     phys_tscale = se_phys_tscale
     limiter_option  = se_limiter_option
     nsplit = se_nsplit
@@ -470,7 +469,6 @@ module namelist_mod
        write(iulog,*)"readnl: physics       = ",physics
 
        write(iulog,*)"readnl: energy_fixer  = ",energy_fixer
-       write(iulog,*)"readnl: runtype       = ",runtype
 
 
        if (hypervis_power /= 0)then

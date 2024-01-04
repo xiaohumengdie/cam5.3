@@ -11,13 +11,13 @@ module prim_driver_mod
   use reduction_mod, only : reductionbuffer_ordered_1d_t, red_min, red_max, &
          red_sum, red_sum_int, red_flops, initreductionbuffer
   use element_mod, only : element_t, timelevels,  allocate_element_desc
+  use perf_mod,               only: t_startf, t_stopf
   use thread_mod, only : omp_get_num_threads
+
   implicit none
   private
-  public :: prim_init2 , prim_run_subcycle, prim_finalize
+  public :: prim_init2, prim_run_subcycle, prim_finalize
   public :: smooth_topo_datasets
-
-
 
 contains
 
@@ -25,28 +25,29 @@ contains
 
   subroutine prim_init2(elem, hybrid, nets, nete, tl, hvcoord)
 
-    use parallel_mod, only : parallel_t, syncmp
-    use time_mod, only : timelevel_t, tstep, phys_tscale, timelevel_init, nendstep, smooth, nsplit, TimeLevel_Qdp
-    use control_mod, only : runtype, &
-         topology,columnpackage, moisture, rsplit, qsplit, rk_stage_user,&
-         limiter_option, nu, nu_q, nu_div, tstep_type, hypervis_subcycle, &
-         hypervis_subcycle_q
-    use control_mod, only : tracer_transport_type
-    use control_mod, only : TRACERTRANSPORT_SE_GLL
-    use prim_si_ref_mod, only: prim_set_mass
-    use thread_mod, only : max_num_threads, omp_get_thread_num
-    use derivative_mod, only : derivinit, v2pinit
-    use global_norms_mod, only : test_global_integral, print_cfl
-    use hybvcoord_mod, only : hvcoord_t
-    use prim_advection_mod, only: prim_advec_init2, deriv
+
+    use parallel_mod,           only: syncmp
+    use time_mod,               only: timelevel_t, tstep, phys_tscale, nsplit, TimeLevel_Qdp
+
+
+    use control_mod,            only: runtype, topology, rsplit, qsplit, rk_stage_user,         &
+                                      nu, nu_q, nu_div, tstep_type, hypervis_subcycle, &
+                                      hypervis_subcycle_q
+
+    use thread_mod,             only: omp_get_thread_num
+    use global_norms_mod,       only: test_global_integral, print_cfl
+    use hybvcoord_mod,          only: hvcoord_t
+    use prim_advection_mod,     only: prim_advec_init2,deriv
+    use control_mod,           only : tracer_transport_type, TRACERTRANSPORT_SE_GLL
 
     type (element_t), intent(inout) :: elem(:)
+
     type (hybrid_t), intent(in) :: hybrid
 
     type (TimeLevel_t), intent(inout)    :: tl              ! time level struct
     type (hvcoord_t), intent(inout)      :: hvcoord         ! hybrid vertical coordinate struct
 
-     integer, intent(in)                     :: nets  ! starting thread element number (private)
+    integer, intent(in)                     :: nets  ! starting thread element number (private)
     integer, intent(in)                     :: nete  ! ending thread element number   (private)
 
 
@@ -54,7 +55,6 @@ contains
     ! Local variables
     ! ==================================
 
-    real (kind=r8) :: dt              ! "timestep dependent" timestep
 !   variables used to calculate CFL
     real (kind=r8) :: dtnu            ! timestep*viscosity parameter
     real (kind=r8) :: dt_dyn_vis      ! viscosity timestep used in dynamics
@@ -62,18 +62,10 @@ contains
 
     real (kind=r8) :: dp
 
-
-    real (kind=r8) :: ps(np,np)       ! surface pressure
-
-    character(len=80)     :: fname
-    character(len=8)      :: njusn
-    character(len=4)      :: charnum
-
-    integer :: simday
-    integer :: i,j,k,ie,iptr,t,q
-    integer :: ierr
-    integer :: nfrc
+    integer :: i,j,k,ie,t,q
     integer :: n0_qdp
+
+
 
     ! ==========================
     ! begin executable code
@@ -105,8 +97,6 @@ contains
        dt_tracer_vis = dt_tracer_vis/hypervis_subcycle_q
        dt_dyn_vis = dt_dyn_vis/hypervis_subcycle
     endif
-
-
     ! ==================================
     ! Initialize derivative structure
     ! ==================================
@@ -190,17 +180,18 @@ contains
 
 
        if (phys_tscale/=0) then
-          write(iulog,'(a,2f9.2)') "CAM physics timescale:       ",phys_tscale
+          write(iulog,'(a,2f9.2)') "CAM physics timescale:        ",phys_tscale
        endif
-       write(iulog,'(a,2f9.2)') "CAM dtime (dt_phys):         ",tstep*nsplit*qsplit*max(rsplit,1)
+       write(iulog,'(a,2f9.2)') "CAM dtime (dt_phys):             ",tstep*nsplit*qsplit*max(rsplit,1)
     end if
 
 
-    if (hybrid%masterthread) write(iulog,*) "initial state:"
+     if (hybrid%masterthread) write(iulog,*) "initial state:"
 
   end subroutine prim_init2
 
 !=======================================================================================================!
+
 
   subroutine prim_run_subcycle(elem, hybrid,nets,nete, dt, tl, hvcoord,nsubstep)
 !
@@ -220,32 +211,33 @@ contains
 !
 !
     use hybvcoord_mod, only : hvcoord_t
-    use time_mod, only : TimeLevel_t, timelevel_update, timelevel_qdp, nsplit
-    use control_mod, only: statefreq,&
-           energy_fixer, ftype, qsplit, rsplit
-    use prim_advance_mod, only : applycamforcing, &
-                                 applycamforcing_dynamics
-    use reduction_mod, only : parallelmax
-    use prim_advection_mod, only : vertical_remap
+    use time_mod,               only: TimeLevel_t, timelevel_update, timelevel_qdp, nsplit
+    use control_mod,            only: statefreq, energy_fixer, ftype, qsplit, rsplit
+    use prim_advance_mod,       only: applycamforcing
+    use prim_advance_mod,       only: applycamforcing_dynamics
+    use reduction_mod,          only: parallelmax
+    use prim_advection_mod,    only : vertical_remap
 
 
-    type (element_t) , intent(inout)        :: elem(:)
 
-    type (hybrid_t), intent(in)           :: hybrid  ! distributed parallel structure (shared)
 
-    type (hvcoord_t), intent(in)      :: hvcoord         ! hybrid vertical coordinate struct
 
-    integer, intent(in)                     :: nets  ! starting thread element number (private)
-    integer, intent(in)                     :: nete  ! ending thread element number   (private)
+    type (element_t) , intent(inout) :: elem(:)
+
+    type (hybrid_t), intent(in)      :: hybrid  ! distributed parallel structure (shared)
+    type (hvcoord_t), intent(in)     :: hvcoord         ! hybrid vertical coordinate struct
+    integer, intent(in)              :: nets  ! starting thread element number (private)
+    integer, intent(in)              :: nete  ! ending thread element number   (private)
     real(kind=r8), intent(in)        :: dt  ! "timestep dependent" timestep
-    type (TimeLevel_t), intent(inout)       :: tl
-    integer, intent(in)                     :: nsubstep  ! nsubstep = 1 .. nsplit
-    real(kind=r8) :: st, st1, dp, dt_q, dt_remap
+    type (TimeLevel_t), intent(inout):: tl
+    integer, intent(in)              :: nsubstep  ! nsubstep = 1 .. nsplit
+    real (kind=r8) :: st, st1, dp, dt_q, dt_remap
     integer :: ie, t, q,k,i,j,n, n_Q
     integer :: n0_qdp,np1_qdp,r, nstep_end
 
+
     real (kind=r8)                          :: maxcflx, maxcfly
-    real (kind=r8) :: dp_np1(np,np)
+    real (kind=r8)  :: dp_np1(np,np)
 
     ! ===================================
     ! Main timestepping loop
@@ -394,8 +386,8 @@ contains
 
     real (kind=r8) :: dp_np1(np,np)
 
-    dt_q = dt*qsplit
 
+    dt_q = dt*qsplit
     ! ===============
     ! initialize mean flux accumulation variables and save some variables at n0
     ! for use by advection
@@ -429,16 +421,27 @@ contains
     ! Dynamical Step
     ! ===============
     n_Q = tl%n0  ! n_Q = timelevel of FV tracers at time t.  need to save this
-                 ! FV tracers still carry 3 timelevels
                  ! SE tracers only carry 2 timelevels
+
+    call t_startf('prim_advance_exp')
+
     call prim_advance_exp(elem, deriv(hybrid%ithr), hvcoord,   &
          hybrid, dt, tl, nets, nete)
+
+    call t_stopf('prim_advance_exp')
+
     do n=2,qsplit
        call TimeLevel_update(tl,"leapfrog")
+
+       call t_startf('prim_advance_exp')
+
        call prim_advance_exp(elem, deriv(hybrid%ithr), hvcoord,   &
             hybrid, dt, tl, nets, nete)
+
+    call t_stopf('prim_advance_exp')
+
        ! defer final timelevel update until after Q update.
-    enddo
+  enddo
     ! current dynamics state variables:
     !    derived%dp              =  dp at start of timestep
     !    derived%vstar           =  velocity at start of tracer timestep
@@ -447,17 +450,17 @@ contains
     !        state%v(:,:,:,np1)      = velocity on reference levels
     !        state%ps_v(:,:,:,np1)   = ps
     ! rsplit>0
-    !        state%v(:,:,:,np1)      = velocity on lagrangian levels 
+    !        state%v(:,:,:,np1)      = velocity on lagrangian levels
     !        state%dp3d(:,:,:,np1)   = dp3d
     !
 
 
     ! ===============
-    ! Tracer Advection.  
+    ! Tracer Advection.
     ! in addition, this routine will apply the DSS to:
     !        derived%eta_dot_dpdn    =  mean vertical velocity (used for remap below)
     !        derived%omega           =
-    ! Tracers are always vertically lagrangian.  
+    ! Tracers are always vertically lagrangian.
     ! For rsplit=0: 
     !   if tracer scheme needs v on lagrangian levels it has to vertically interpolate
     !   if tracer scheme needs dp3d, it needs to derive it from ps_v
@@ -469,7 +472,7 @@ contains
       stop "erro tracer"
     endif
 
-  end subroutine prim_step
+   end subroutine prim_step
 
 
 !=======================================================================================================!
@@ -483,6 +486,7 @@ contains
     ! ==========================
   end subroutine prim_finalize
 
+!=========================================================================================
 
 
 !=======================================================================================================!

@@ -1,27 +1,26 @@
 module gravity_waves_sources
-  use derivative_mod, only : derivative_t
-  use dimensions_mod, only : np,nlev
-  use edgetype_mod, only       : EdgeBuffer_t
-  use element_mod, only    : element_t
-  use hybrid_mod, only     : hybrid_t
-  use kinds, only          : real_kind
-  use shr_kind_mod, only   : r8 => shr_kind_r8
+  use derivative_mod, only: derivative_t
+  use dimensions_mod, only: np,nlev
+  use edgetype_mod,   only: EdgeBuffer_t
+  use element_mod,    only: element_t
+  use hybrid_mod,     only: hybrid_t
+  use shr_kind_mod,   only: r8 => shr_kind_r8
   use thread_mod, only     : horz_num_threads
   use dyn_comp, only       : dyn_import_t
 
   implicit none
   private
   save
-  
+
   !! gravity_waves_sources created by S Santos, 10 Aug 2011
-  !! 
+  !!
   !! gws_src_fnct starts parallel environment and computes frontogenesis
   !!   for use by WACCM (via dp_coupling)
- 
+
   public  :: gws_src_fnct
   public  :: gws_init
   private :: compute_frontogenesis
-  
+
   type (EdgeBuffer_t) :: edge3
   type (derivative_t), allocatable   :: deriv(:)
   real(r8) :: psurf_ref
@@ -59,14 +58,14 @@ CONTAINS
     implicit none
     type (element_t), intent(inout), dimension(:) :: elem
     integer, intent(in)          :: tl
-    real (kind=real_kind), intent(out) :: frontgf(npsq,pver,nelemd)
-    real (kind=real_kind), intent(out) :: frontga(npsq,pver,nelemd)
-    
+    real (kind=r8), intent(out) :: frontgf(npsq,pver,nelemd)
+    real (kind=r8), intent(out) :: frontga(npsq,pver,nelemd)
+
     ! Local variables
     type (hybrid_t) :: hybrid
     integer :: nets, nete, ithr, ncols, ie
-    real(kind=real_kind), allocatable  ::  frontgf_thr(:,:,:,:)
-    real(kind=real_kind), allocatable  ::  frontga_thr(:,:,:,:)
+    real(kind=r8), allocatable  ::  frontgf_thr(:,:,:,:)
+    real(kind=r8), allocatable  ::  frontga_thr(:,:,:,:)
     
     call init_loop_ranges(nelemd)
 
@@ -96,7 +95,7 @@ CONTAINS
     !$OMP END PARALLEL
 
   end subroutine gws_src_fnct
-  
+
   subroutine compute_frontogenesis(frontgf,frontga,tl,elem,ederiv,hybrid,nets,nete)
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! compute frontogenesis function F
@@ -105,12 +104,12 @@ CONTAINS
   !   theta  = potential temperature
   !   gradth = grad(theta)
   !   C = ( gradth dot grad ) U
-  ! 
+  !
   ! Original by Mark Taylor, July 2011
   ! Change by Santos, 10 Aug 2011:
   ! Integrated into gravity_waves_sources module, several arguments made global
   !  to prevent repeated allocation/initialization
-  ! 
+  !
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     use physical_constants, only : kappa
     use derivative_mod, only : gradient_sphere, ugradv_sphere
@@ -123,15 +122,15 @@ CONTAINS
     type (derivative_t)  , intent(in) :: ederiv
     integer, intent(in) :: nets,nete
     integer, intent(in) :: tl ! timelevel to use
-    real(kind=real_kind), intent(out) ::  frontgf(np,np,nlev,nets:nete)
-    real(kind=real_kind), intent(out) ::  frontga(np,np,nlev,nets:nete)
+    real(kind=r8), intent(out) ::  frontgf(np,np,nlev,nets:nete)
+    real(kind=r8), intent(out) ::  frontga(np,np,nlev,nets:nete)
   
     ! local
     integer :: k,kptr,i,j,ie,component
-    real(kind=real_kind)  ::  gradth(np,np,2,nlev,nets:nete)  ! grad(theta)
-    real(kind=real_kind)  :: p(np,np)        ! pressure at mid points
-    real(kind=real_kind)  :: theta(np,np)    ! potential temperature at mid points
-    real(kind=real_kind)  ::  C(np,np,2)     
+    real(kind=r8)  ::  gradth(np,np,2,nlev,nets:nete)  ! grad(theta)
+    real(kind=r8)  :: p(np,np)        ! pressure at mid points
+    real(kind=r8)  :: theta(np,np)    ! potential temperature at mid points
+    real(kind=r8)  ::  C(np,np,2)     
     
     do ie=nets,nete
        do k=1,nlev
@@ -173,7 +172,7 @@ CONTAINS
           frontgf(:,:,k,ie)=frontgf(:,:,k,ie)*elem(ie)%rspheremp(:,:)
           
           ! Frontogenesis angle
-          frontga(:,:,k,ie) = atan2 ( gradth(:,:,2,k,ie) , gradth(:,:,1,k,ie) + 1.e-10_real_kind )
+          frontga(:,:,k,ie) = atan2 ( gradth(:,:,2,k,ie) , gradth(:,:,1,k,ie) + 1.e-10_r8 )
        enddo
     enddo
   end subroutine compute_frontogenesis

@@ -526,7 +526,7 @@ end do
 !  velocity grid
 !  ================================================
 
-  subroutine gradient_wk_stag(p,deriv,dp)
+  function gradient_wk_stag(p,deriv) result(dp)
 
     type (derivative_stag_t), intent(in) :: deriv
     real(kind=r8), intent(in) :: p(np,np)
@@ -572,7 +572,7 @@ end do
     enddo
 
 
-  end subroutine gradient_wk_stag
+  end function gradient_wk_stag
 
 !  ================================================
 !  gradient_wk_nonstag:
@@ -582,7 +582,7 @@ end do
 !  weak gradient on the Gauss-Lobbatto grid
 !  ================================================
 
-  subroutine gradient_wk_nonstag(p,deriv,dp)
+  function gradient_wk_nonstag(p,deriv) result(dp)
 
     type (derivative_t), intent(in) :: deriv
     real(kind=r8), intent(in) :: p(np,np)
@@ -627,7 +627,7 @@ end do
              dp(i  ,j  ,2) = sumy00
           end do
        end do
-  end subroutine gradient_wk_nonstag
+  end function gradient_wk_nonstag
 
 !  ================================================
 !  gradient_str_stag:
@@ -768,7 +768,7 @@ end do
 !  1st order, monotone, conservative
 !  MT initial version 2013
 !  ================================================
-  subroutine remap_phys2gll(pin,nphys,pout)
+  function remap_phys2gll(pin,nphys) result(pout)
     integer :: nphys
     real(kind=r8), intent(in) :: pin(nphys*nphys)
     real(kind=r8) :: pout(np,np)
@@ -883,7 +883,7 @@ end do
        enddo
     enddo
 
-    end subroutine remap_phys2gll
+    end function remap_phys2gll
 
 !----------------------------------------------------------------
 
@@ -930,7 +930,7 @@ end do
     end subroutine gradient_sphere
 
 
-  subroutine curl_sphere_wk_testcov(s,deriv,elem,ds)
+  function curl_sphere_wk_testcov(s,deriv,elem) result(ds)
 !
 !   integrated-by-parts gradient, w.r.t. COVARIANT test functions
 !   input s:  scalar  (assumed to be s*khat)
@@ -990,10 +990,10 @@ end do
           ds(i,j,2)=(elem%D(i,j,2,1)*dscontra(i,j,1) + elem%D(i,j,2,2)*dscontra(i,j,2))
        enddo
     enddo
-    end subroutine curl_sphere_wk_testcov
+    end function curl_sphere_wk_testcov
 
 
-  subroutine gradient_sphere_wk_testcov(s,deriv,elem,ds)
+  function gradient_sphere_wk_testcov(s,deriv,elem) result(ds)
 !
 !   integrated-by-parts gradient, w.r.t. COVARIANT test functions
 !   input s:  scalar
@@ -1057,10 +1057,10 @@ end do
        enddo
     enddo
 
-    end subroutine gradient_sphere_wk_testcov
+    end function gradient_sphere_wk_testcov
 
 
-  subroutine gradient_sphere_wk_testcontra(s,deriv,elem,ds)
+  function gradient_sphere_wk_testcontra(s,deriv,elem) result(ds)
 !
 !   integrated-by-parts gradient, w.r.t. CONTRA test functions
 !   input s:  scalar
@@ -1104,7 +1104,7 @@ end do
     ds(:,:,1)=elem%Dinv(:,:,1,1)*dscov(:,:,1) + elem%Dinv(:,:,2,1)*dscov(:,:,2)
     ds(:,:,2)=elem%Dinv(:,:,1,2)*dscov(:,:,1) + elem%Dinv(:,:,2,2)*dscov(:,:,2)
 
-    end subroutine gradient_sphere_wk_testcontra
+    end function gradient_sphere_wk_testcontra
 
   subroutine ugradv_sphere(u,v,deriv,elem,ugradv)
 !
@@ -1148,7 +1148,7 @@ end do
 
 
 
-  subroutine curl_sphere(s,deriv,elem,ds)
+  function curl_sphere(s,deriv,elem) result(ds)
 !
 !   input s:  scalar  (assumed to be  s khat)
 !   output  curl(s khat) vector in lat-lon coordinates
@@ -1195,7 +1195,7 @@ end do
        enddo
     enddo
 
-    end subroutine curl_sphere
+    end function curl_sphere
 
 
 !--------------------------------------------------------------------------
@@ -1429,7 +1429,7 @@ end do
 
   end subroutine vorticity_sphere
 
-  subroutine vorticity_sphere_diag(v,deriv,elem,vort)
+  function vorticity_sphere_diag(v,deriv,elem) result(vort)
   !
   !   input:  v = velocity in lat-lon coordinates
   !   ouput:  diagonal component of spherical vorticity of v
@@ -1481,7 +1481,7 @@ end do
          end do
       end do
 
-  end subroutine vorticity_sphere_diag
+  end function vorticity_sphere_diag
 
 !DIR$ ATTRIBUTES FORCEINLINE :: divergence_sphere
   subroutine divergence_sphere(v,deriv,elem,div)
@@ -1568,8 +1568,10 @@ end do
           oldgrads=grads
           do j=1,np
              do i=1,np
-                grads(i,j,1) = sum(oldgrads(i,j,:)*elem%tensorVisc(i,j,1,:))
-                grads(i,j,2) = sum(oldgrads(i,j,:)*elem%tensorVisc(i,j,2,:))
+                grads(i,j,1) = oldgrads(i,j,1)*elem%tensorVisc(i,j,1,1) + &
+                               oldgrads(i,j,2)*elem%tensorVisc(i,j,1,2)
+                grads(i,j,2) = oldgrads(i,j,1)*elem%tensorVisc(i,j,2,1) + &
+                               oldgrads(i,j,2)*elem%tensorVisc(i,j,2,2)
              end do
           end do
        else
@@ -1578,7 +1580,7 @@ end do
     endif
 
     ! note: divergnece_sphere and divergence_sphere_wk are identical *after* bndry_exchange
-    ! if input is C_0.  Here input is not C_0, so we should use divergence_sphere_wk().  
+    ! if input is C_0.  Here input is not C_0, so we should use divergence_sphere_wk().
     call divergence_sphere_wk(grads,deriv,elem,laplace)
 
   end subroutine laplace_sphere_wk
@@ -1611,10 +1613,10 @@ end do
              call endrun('ERROR: tensorHV can not be used with nu_div/=nu')
           endif
        endif
-       call vlaplace_sphere_wk_cartesian(v,deriv,elem,laplace,var_coef)
+       laplace=vlaplace_sphere_wk_cartesian(v,deriv,elem,var_coef)
     else
        ! all other cases, use contra formulation:
-       call vlaplace_sphere_wk_contra(v,deriv,elem,laplace,var_coef,nu_ratio)
+       laplace=vlaplace_sphere_wk_contra(v,deriv,elem,var_coef,nu_ratio)
     endif
 
   end subroutine vlaplace_sphere_wk
@@ -1622,7 +1624,14 @@ end do
 
 
 
-  subroutine vlaplace_sphere_wk_cartesian(v,deriv,elem,laplace,var_coef)
+
+
+
+
+
+
+
+  function vlaplace_sphere_wk_cartesian(v,deriv,elem,var_coef) result(laplace)
 !
 !   input:  v = vector in lat-lon coordinates
 !   ouput:  weak laplacian of v, in lat-lon coordinates
@@ -1630,38 +1639,37 @@ end do
     real(kind=r8),       intent(in) :: v(np,np,2)
     type (derivative_t), intent(in) :: deriv
     type (element_t),    intent(in) :: elem
-    logical :: var_coef
+    logical,             intent(in) :: var_coef
 
     real(kind=r8)                   :: laplace(np,np,2)
     ! Local
 
     integer component
     real(kind=r8) :: dum_cart(np,np,3)
-    real(kind=r8) :: dum_tmp(np,np)
+    real(kind=r8) :: dum_cart2(np,np)
 
 
     ! latlon -> cartesian
     do component=1,3
-       dum_cart(:,:,component)=sum( elem%vec_sphere2cart(:,:,component,:)*v(:,:,:) ,3)
-    end do
-
-    ! Do laplace on cartesian comps
-    do component=1,3
-       call laplace_sphere_wk(dum_cart(:,:,component),deriv,elem,dum_tmp,var_coef)
-       dum_cart(:,:,component) = dum_tmp
+       dum_cart2(:,:) = elem%vec_sphere2cart(:,:,component,1)*v(:,:,1) + &
+                                elem%vec_sphere2cart(:,:,component,2)*v(:,:,2)
+       ! Do laplace on cartesian comps
+       call laplace_sphere_wk(dum_cart2,deriv,elem,dum_cart(:,:,component),var_coef)
     enddo
 
     ! cartesian -> latlon
     do component=1,2
        ! vec_sphere2cart is its own pseudoinverse.
-       laplace(:,:,component)=sum( dum_cart(:,:,:)*elem%vec_sphere2cart(:,:,:,component) ,3)
-    end do 
+       laplace(:,:,component) = dum_cart(:,:,1)*elem%vec_sphere2cart(:,:,1,component) + &
+                                dum_cart(:,:,2)*elem%vec_sphere2cart(:,:,2,component) + &
+                                dum_cart(:,:,3)*elem%vec_sphere2cart(:,:,3,component)
+    end do
 
-  end subroutine vlaplace_sphere_wk_cartesian
+  end function vlaplace_sphere_wk_cartesian
 
 
 
-  subroutine vlaplace_sphere_wk_contra(v,deriv,elem,laplace,var_coef,nu_ratio)
+  function vlaplace_sphere_wk_contra(v,deriv,elem,var_coef,nu_ratio) result(laplace)
 !
 !   input:  v = vector in lat-lon coordinates
 !   ouput:  weak laplacian of v, in lat-lon coordinates
@@ -1675,10 +1683,11 @@ end do
     logical,                 intent(in) :: var_coef
     type (derivative_t),     intent(in) :: deriv
     type (element_t),        intent(in) :: elem
-    real(kind=r8) :: laplace(np,np,2)
-    real(kind=r8) :: lap_tmp(np,np,2)
-    real(kind=r8) :: lap_tmp2(np,np,2)
-    real(kind=r8), optional :: nu_ratio
+
+    real(kind=r8), optional, intent(in) :: nu_ratio
+
+    real(kind=r8)                       :: laplace(np,np,2)
+
     ! Local
 
     integer i,j,l,m,n
@@ -1695,42 +1704,38 @@ end do
     endif
 
     if (present(nu_ratio)) div = nu_ratio*div
-   
-    call gradient_sphere_wk_testcov(div,deriv,elem,lap_tmp)
-    call curl_sphere_wk_testcov(vor,deriv,elem,lap_tmp2)
-    laplace = lap_tmp - lap_tmp2
 
-    do n=1,np
-       do m=1,np
+    laplace = gradient_sphere_wk_testcov(div,deriv,elem) - &
+         curl_sphere_wk_testcov(vor,deriv,elem)
+
+      do n=1,np
+        do m=1,np
           ! add in correction so we dont damp rigid rotation
-#define UNDAMPRR
-#ifdef UNDAMPRR
           laplace(m,n,1)=laplace(m,n,1) + 2*elem%spheremp(m,n)*v(m,n,1)*(ra**2)
           laplace(m,n,2)=laplace(m,n,2) + 2*elem%spheremp(m,n)*v(m,n,2)*(ra**2)
-#endif
+        enddo
       enddo
-    enddo
-  end subroutine vlaplace_sphere_wk_contra
+  end function vlaplace_sphere_wk_contra
 
   ! Given a field defined on the unit element, [-1,1]x[-1,1]
   ! sample values, sampled_val, and integration weights, metdet,
   ! at a number, np, of Gauss-Lobatto-Legendre points. Divide
   ! the square up into intervals by intervals sub-squares so that
-  ! there are now intervals**2 sub-cells.  Integrate the 
+  ! there are now intervals**2 sub-cells.  Integrate the
   ! function defined by sampled_val and metdet over each of these
-  ! sub-cells and return the integrated values as an 
+  ! sub-cells and return the integrated values as an
   ! intervals by intervals matrix.
   !
   ! Efficiency is obtained by computing and caching the appropriate
   ! integration matrix the first time the function is called.
-  subroutine subcell_integration(sampled_val, metdet, np, intervals,values)
+  subroutine subcell_integration(sampled_val, np, intervals, metdet,values)
 
     implicit none
 
     integer              , intent(in)  :: np
     integer              , intent(in)  :: intervals
     real (kind=r8), intent(in)  :: sampled_val(np,np)
-    real (kind=r8), intent(in)  :: metdet     (np,np)
+    real (kind=r8), intent(in)  :: metdet(np,np)
     real (kind=r8)              :: values(intervals,intervals)
 
     real (kind=r8)              :: V          (np,np)
