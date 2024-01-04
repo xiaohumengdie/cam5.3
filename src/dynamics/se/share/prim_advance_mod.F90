@@ -58,7 +58,7 @@ contains
     endif
   end subroutine prim_advance_init
 
-  subroutine prim_advance_exp(elem, deriv, hvcoord, hybrid, dt, tl,  nets, nete, compute_diagnostics)
+  subroutine prim_advance_exp(elem, deriv, hvcoord, hybrid, dt, tl,  nets, nete)
     use control_mod,       only: qsplit, tstep_type, rsplit, qsplit, moisture, integration
     use derivative_mod,    only: derivative_t, vorticity, divergence, gradient, gradient_wk
     use dimensions_mod,    only: np, nlev
@@ -84,7 +84,6 @@ contains
     type (TimeLevel_t)   , intent(in) :: tl
     integer              , intent(in) :: nets
     integer              , intent(in) :: nete
-    logical, intent(in)               :: compute_diagnostics
 
     ! Local
     real (kind=r8) :: dt2, time
@@ -151,28 +150,28 @@ contains
        ! regular LF step
        dt2 = 2*dt
        call compute_and_apply_rhs(np1,nm1,n0,qn0,dt2,elem,hvcoord,hybrid,&
-            deriv,nets,nete,compute_diagnostics,eta_ave_w)
+            deriv,nets,nete,eta_ave_w)
        dt_vis = dt2  ! dt to use for time-split dissipation
     else if (method==1) then
       ! RK2
       ! forward euler to u(dt/2) = u(0) + (dt/2) RHS(0)  (store in u(np1))
       call compute_and_apply_rhs(np1,n0,n0,qn0,dt/2,elem,hvcoord,hybrid,&
-           deriv,nets,nete,compute_diagnostics,0.0_r8)
+           deriv,nets,nete,0.0_r8)
       ! leapfrog:  u(dt) = u(0) + dt RHS(dt/2)     (store in u(np1))
       call compute_and_apply_rhs(np1,n0,np1,qn0,dt,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,eta_ave_w)
+           deriv,nets,nete,eta_ave_w)
     else if (method==2) then
       ! RK2-SSP 3 stage.  matches tracer scheme. optimal SSP CFL, but
       ! not optimal for regular CFL
       ! u1 = u0 + dt/2 RHS(u0)
       call compute_and_apply_rhs(np1,n0,n0,qn0,dt/2,elem,hvcoord,hybrid,&
-           deriv,nets,nete,compute_diagnostics,eta_ave_w/3)
+           deriv,nets,nete,eta_ave_w/3)
       ! u2 = u1 + dt/2 RHS(u1)
       call compute_and_apply_rhs(np1,np1,np1,qn0,dt/2,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,eta_ave_w/3)
+           deriv,nets,nete,eta_ave_w/3)
       ! u3 = u2 + dt/2 RHS(u2)
       call compute_and_apply_rhs(np1,np1,np1,qn0,dt/2,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,eta_ave_w/3)
+           deriv,nets,nete,eta_ave_w/3)
 
       ! unew = u/3 +2*u3/3  = u + 1/3 (RHS(u) + RHS(u1) + RHS(u2))
       do ie=nets,nete
@@ -192,50 +191,50 @@ contains
       ! classic RK3  CFL=sqrt(3)
       ! u1 = u0 + dt/3 RHS(u0)
       call compute_and_apply_rhs(np1,n0,n0,qn0,dt/3,elem,hvcoord,hybrid,&
-           deriv,nets,nete,compute_diagnostics,0.0_r8)
+           deriv,nets,nete,0.0_r8)
       ! u2 = u0 + dt/2 RHS(u1)
       call compute_and_apply_rhs(np1,n0,np1,qn0,dt/2,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,0.0_r8)
+           deriv,nets,nete,0.0_r8)
       ! u3 = u0 + dt RHS(u2)
       call compute_and_apply_rhs(np1,n0,np1,qn0,dt,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,eta_ave_w)
+           deriv,nets,nete,eta_ave_w)
     else if (method==4) then
       ! KG 4th order 4 stage:   CFL=sqrt(8)
       ! low storage version of classic RK4
       ! u1 = u0 + dt/4 RHS(u0)
       call compute_and_apply_rhs(np1,n0,n0,qn0,dt/4,elem,hvcoord,hybrid,&
-           deriv,nets,nete,compute_diagnostics,0.0_r8)
+           deriv,nets,nete,0.0_r8)
       ! u2 = u0 + dt/3 RHS(u1)
       call compute_and_apply_rhs(np1,n0,np1,qn0,dt/3,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,0.0_r8)
+           deriv,nets,nete,0.0_r8)
       ! u3 = u0 + dt/2 RHS(u2)
       call compute_and_apply_rhs(np1,n0,np1,qn0,dt/2,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,0.0_r8)
+           deriv,nets,nete,0.0_r8)
       ! u4 = u0 + dt RHS(u3)
       call compute_and_apply_rhs(np1,n0,np1,qn0,dt,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,eta_ave_w)
+           deriv,nets,nete,eta_ave_w)
     else if (method==5) then
       !
       ! Ullrich 3nd order 5 stage:   CFL=sqrt( 4^2 -1) = 3.87
       ! u1 = u0 + dt/5 RHS(u0)  (save u1 in timelevel nm1)
       ! rhs: t=t
       call compute_and_apply_rhs(nm1,n0,n0,qn0,dt/5,elem,hvcoord,hybrid,&
-           deriv,nets,nete,compute_diagnostics,eta_ave_w/4)
+           deriv,nets,nete,eta_ave_w/4)
       !
       ! u2 = u0 + dt/5 RHS(u1); rhs: t=t+dt/5
       !
       call compute_and_apply_rhs(np1,n0,nm1,qn0,dt/5,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,0.0_r8)
+           deriv,nets,nete,0.0_r8)
       !
       ! u3 = u0 + dt/3 RHS(u2); rhs: t=t+2*dt/5
       !
       call compute_and_apply_rhs(np1,n0,np1,qn0,dt/3,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,0.0_r8)
+           deriv,nets,nete,0.0_r8)
       !
       ! u4 = u0 + 2dt/3 RHS(u3); rhs: t=t+2*dt/5+dt/3
       !
       call compute_and_apply_rhs(np1,n0,np1,qn0,2*dt/3,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,0.0_r8)
+           deriv,nets,nete,0.0_r8)
       ! compute (5*u1/4 - u0/4) in timelevel nm1:
       do ie=nets,nete
         elem(ie)%state%v(:,:,:,:,nm1)= (5*elem(ie)%state%v(:,:,:,:,nm1) &
@@ -255,7 +254,7 @@ contains
       ! phl: rhs: t=t+2*dt/5+dt/3+3*dt/4         -wrong RK times ...
       !
       call compute_and_apply_rhs(np1,nm1,np1,qn0,3*dt/4,elem,hvcoord,hybrid,&
-           deriv,nets,nete,.false.,3*eta_ave_w/4)
+           deriv,nets,nete,3*eta_ave_w/4)
       ! final method is the same as:
       ! u5 = u0 +  dt/4 RHS(u0)) + 3dt/4 RHS(u4)
     else
@@ -974,7 +973,7 @@ contains
   ! phl: for offline winds use time at 3rd argument (same as rhs currently)
   !
   subroutine compute_and_apply_rhs(np1,nm1,n0,qn0,dt2,elem,hvcoord,hybrid,&
-       deriv,nets,nete,compute_diagnostics,eta_ave_w)
+       deriv,nets,nete,eta_ave_w)
   ! ===================================
   ! compute the RHS, accumulate into u(np1) and apply DSS
   !
@@ -1018,7 +1017,6 @@ contains
   implicit none
   integer, intent(in) :: np1,nm1,n0,qn0,nets,nete
   real*8, intent(in) :: dt2
-  logical, intent(in)  :: compute_diagnostics
 
   type (hvcoord_t)     , intent(in) :: hvcoord
   type (hybrid_t)      , intent(in) :: hybrid
@@ -1343,165 +1341,6 @@ contains
 
      end do
 
-#ifdef ENERGY_DIAGNOSTICS
-     ! =========================================================
-     !
-     ! diagnostics
-     ! recomputes some gradients that were not saved above
-     ! uses:  sdot_sum(), eta_dot_dpdn(), grad_ps()
-     ! grad_phi(), dp(), p(), T_vadv(), v_vadv(), divdp()
-     ! =========================================================
-
-     ! =========================================================
-     ! (AAM) - This section has accumulations over vertical levels.
-     !   Be careful if implementing OpenMP
-     ! =========================================================
-
-     if (compute_diagnostics) then
-        elem(ie)%accum%KEhorz1=0
-        elem(ie)%accum%KEhorz2=0
-        elem(ie)%accum%IEhorz1=0
-        elem(ie)%accum%IEhorz2=0
-        elem(ie)%accum%IEhorz1_wet=0
-        elem(ie)%accum%IEhorz2_wet=0
-        elem(ie)%accum%KEvert1=0
-        elem(ie)%accum%KEvert2=0
-        elem(ie)%accum%IEvert1=0
-        elem(ie)%accum%IEvert2=0
-        elem(ie)%accum%IEvert1_wet=0
-        elem(ie)%accum%IEvert2_wet=0
-        elem(ie)%accum%T1=0
-        elem(ie)%accum%T2=0
-        elem(ie)%accum%T2_s=0
-        elem(ie)%accum%S1=0
-        elem(ie)%accum%S1_wet=0
-        elem(ie)%accum%S2=0
-
-        do j=1,np
-           do i=1,np
-              elem(ie)%accum%S2(i,j) = elem(ie)%accum%S2(i,j) - &
-                   sdot_sum(i,j)*elem(ie)%state%phis(i,j)
-           enddo
-        enddo
-
-        do k=1,nlev
-           ! vtemp = grad_E(:,:,k)
-           do j=1,np
-              do i=1,np
-                 v1     = elem(ie)%state%v(i,j,1,k,n0)
-                 v2     = elem(ie)%state%v(i,j,2,k,n0)
-                 Ephi(i,j)=0.5D0*( v1*v1 + v2*v2 )
-              enddo
-           enddo
-           ! vtemp = gradient_sphere(Ephi,deriv,elem(ie)%Dinv)
-           call gradient_sphere(Ephi,deriv,elem(ie)%Dinv,vtemp)
-           do j=1,np
-              do i=1,np
-                 ! dp/dn u dot grad(E)
-                 v1     = elem(ie)%state%v(i,j,1,k,n0)
-                 v2     = elem(ie)%state%v(i,j,2,k,n0)
-                 elem(ie)%accum%KEhorz2(i,j) = elem(ie)%accum%KEhorz2(i,j) + &
-                      (v1*vtemp(i,j,1)  + v2*vtemp(i,j,2))*dp(i,j,k)
-                 ! E div( u dp/dn )
-                 elem(ie)%accum%KEhorz1(i,j) = elem(ie)%accum%KEhorz1(i,j) + Ephi(i,j)*divdp(i,j,k)
-
-                 ! Cp T div( u dp/dn)   ! dry horizontal advection component
-                 elem(ie)%accum%IEhorz1(i,j) = elem(ie)%accum%IEhorz1(i,j) + Cp*elem(ie)%state%T(i,j,k,n0)*divdp(i,j,k)
-
-
-              enddo
-           enddo
-
-
-           ! vtemp = grad_phi(:,:,k)
-           ! vtemp = gradient_sphere(phi(:,:,k),deriv,elem(ie)%Dinv)
-           call gradient_sphere(phi(:,:,k),deriv,elem(ie)%Dinv,vtemp)
-           do j=1,np
-              do i=1,np
-                 v1     = elem(ie)%state%v(i,j,1,k,n0)
-                 v2     = elem(ie)%state%v(i,j,2,k,n0)
-                 E = 0.5D0*( v1*v1 + v2*v2 )
-                 ! NOTE:  Cp_star = Cp + (Cpv-Cp)*q
-                 ! advection terms can thus be broken into two components: dry and wet
-                 ! dry components cancel exactly
-                 ! wet components should cancel exactly
-                 !
-                 ! some diagnostics
-                 ! e = eta_dot_dpdn()
-                 de =  eta_dot_dpdn(i,j,k+1)-eta_dot_dpdn(i,j,k)
-                 ! Cp T de/dn, integral dn:
-                 elem(ie)%accum%IEvert1(i,j)=elem(ie)%accum%IEvert1(i,j) + Cp*elem(ie)%state%T(i,j,k,n0)*de
-                 ! E de/dn
-                 elem(ie)%accum%KEvert1(i,j)=elem(ie)%accum%KEvert1(i,j) + E*de
-                 ! Cp T_vadv dp/dn
-                 elem(ie)%accum%IEvert2(i,j)=elem(ie)%accum%IEvert2(i,j) + Cp*T_vadv(i,j,k)*dp(i,j,k)
-                 ! dp/dn V dot V_vadv
-                 elem(ie)%accum%KEvert2(i,j)=elem(ie)%accum%KEvert2(i,j) + (v1*v_vadv(i,j,1,k) + v2*v_vadv(i,j,2,k)) *dp(i,j,k)
-
-                 ! IEvert1_wet():  (Cpv-Cp) T Qdp_vadv  (Q equation)
-                 ! IEvert2_wet():  (Cpv-Cp) Qdp T_vadv   T equation
-                 if (use_cpstar==1) then
-                 elem(ie)%accum%IEvert2_wet(i,j)=elem(ie)%accum%IEvert2_wet(i,j) +&
-                      (Cpwater_vapor-Cp)*elem(ie)%state%Q(i,j,k,1)*T_vadv(i,j,k)*dp(i,j,k)
-                 endif
-
-                 gpterm = T_v(i,j,k)/p(i,j,k)
-                 elem(ie)%accum%T1(i,j) = elem(ie)%accum%T1(i,j) - &
-                      Rgas*gpterm*(grad_p(i,j,1,k)*v1 + grad_p(i,j,2,k)*v2)*dp(i,j,k)
-
-                 elem(ie)%accum%T2(i,j) = elem(ie)%accum%T2(i,j) - &
-                      (vtemp(i,j,1)*v1 + vtemp(i,j,2)*v2)*dp(i,j,k)
-
-                 ! S1 = < Cp_star dp/dn , RT omega_p/cp_star >
-                 elem(ie)%accum%S1(i,j) = elem(ie)%accum%S1(i,j) + &
-                      Rgas*T_v(i,j,k)*omega_p(i,j,k)*dp(i,j,k)
-
-                 ! cp_star = cp + cp2
-                 if (use_cpstar==1) then
-                 cp2 = (Cpwater_vapor-Cp)*elem(ie)%state%Q(i,j,k,1)
-                 cp_ratio = cp2/(cp+cp2)
-                 elem(ie)%accum%S1_wet(i,j) = elem(ie)%accum%S1_wet(i,j) + &
-                      cp_ratio*(Rgas*T_v(i,j,k)*omega_p(i,j,k)*dp(i,j,k))
-                 endif
-
-                 elem(ie)%accum%CONV(i,j,:,k)=-Rgas*gpterm*grad_p(i,j,:,k)-vtemp(i,j,:)
-              enddo
-           enddo
-
-           ! vtemp(:,:,:) = gradient_sphere(elem(ie)%state%phis(:,:),deriv,elem(ie)%Dinv)
-           call gradient_sphere(elem(ie)%state%phis(:,:),deriv,elem(ie)%Dinv,vtemp)
-           do j=1,np
-              do i=1,np
-                 v1     = elem(ie)%state%v(i,j,1,k,n0)
-                 v2     = elem(ie)%state%v(i,j,2,k,n0)
-                 elem(ie)%accum%T2_s(i,j) = elem(ie)%accum%T2_s(i,j) - &
-                      (vtemp(i,j,1)*v1 + vtemp(i,j,2)*v2)*dp(i,j,k)
-              enddo
-           enddo
-
-           !vtemp(:,:,:)   = gradient_sphere(elem(ie)%state%T(:,:,k,n0),deriv,elem(ie)%Dinv)
-           call gradient_sphere(elem(ie)%state%T(:,:,k,n0),deriv,elem(ie)%Dinv,vtemp)
-           do j=1,np
-              do i=1,np
-                 v1     = elem(ie)%state%v(i,j,1,k,n0)
-                 v2     = elem(ie)%state%v(i,j,2,k,n0)
-
-                 ! Cp dp/dn u dot gradT
-                 elem(ie)%accum%IEhorz2(i,j) = elem(ie)%accum%IEhorz2(i,j) + &
-                      Cp*(v1*vtemp(i,j,1) + v2*vtemp(i,j,2))*dp(i,j,k)
-
-                 if (use_cpstar==1) then
-                 elem(ie)%accum%IEhorz2_wet(i,j) = elem(ie)%accum%IEhorz2_wet(i,j) + &
-                      (Cpwater_vapor-Cp)*elem(ie)%state%Q(i,j,k,1)*&
-                      (v1*vtemp(i,j,1) + v2*vtemp(i,j,2))*dp(i,j,k)
-                 endif
-
-              enddo
-           enddo
-
-        enddo
-     endif
-#endif
      ! =========================================================
      ! local element timestep, store in np1.
      ! note that we allow np1=n0 or nm1

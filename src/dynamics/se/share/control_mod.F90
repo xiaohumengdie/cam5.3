@@ -191,8 +191,4 @@ module control_mod
   
   logical, public            :: test_cfldep=.FALSE.
 
-  logical, public :: disable_diagnostics = .FALSE. 
-
-
-
 end module control_mod

@@ -53,8 +53,6 @@ contains
     use control_mod, only : runtype, restartfreq, filter_counter, integration, topology, &
          partmethod, while_iter
     ! --------------------------------
-    use prim_state_mod, only : prim_printstate_init
-    ! --------------------------------
     use namelist_mod, only : readnl
     ! --------------------------------
     use mesh_mod, only : MeshUseMeshFile
@@ -414,15 +412,6 @@ contains
        elem(ie)%idxV=>elem(ie)%idxP
     end do
 
-    !JMD call PrintDofP(elem)
-    !JMD call PrintDofV(elem)
-
-
-
-    call prim_printstate_init(par)
-    ! Initialize output fields for plotting...
-
-
     while_iter = 0
     filter_counter = 0
 
@@ -495,7 +484,6 @@ contains
 
     use parallel_mod, only : parallel_t, haltmp, syncmp, abortmp
     use time_mod, only : timelevel_t, tstep, phys_tscale, timelevel_init, nendstep, smooth, nsplit, TimeLevel_Qdp
-    use prim_state_mod, only : prim_printstate, prim_diag_scalars
     use filter_mod, only : filter_t, fm_filter_create, taylor_filter_create, &
          fm_transfer, bv_transfer
     use control_mod, only : runtype, integration, filter_mu, filter_mu_advection, test_case, &
@@ -751,8 +739,6 @@ contains
 
 
     if (hybrid%masterthread) write(iulog,*) "initial state:"
-    call prim_printstate(elem, tl, hybrid,hvcoord,nets,nete, fvm)
-!JMD    stop 'prim_init2: after call to prim_printstate'
 
     if ( use_semi_lagrange_transport) then
       call sort_neighbor_buffer_mapping(hybrid%par, elem,nets,nete)
@@ -781,10 +767,9 @@ contains
     use hybvcoord_mod, only : hvcoord_t
     use time_mod, only : TimeLevel_t, timelevel_update, timelevel_qdp, nsplit
     use control_mod, only: statefreq,&
-           energy_fixer, ftype, qsplit, rsplit, test_cfldep, disable_diagnostics
+           energy_fixer, ftype, qsplit, rsplit, test_cfldep
     use prim_advance_mod, only : applycamforcing, &
                                  applycamforcing_dynamics
-    use prim_state_mod, only : prim_printstate, prim_diag_scalars, prim_energy_halftimes
     use parallel_mod, only : abortmp
     use reduction_mod, only : parallelmax
     use prim_advection_mod, only : vertical_remap
@@ -808,7 +793,6 @@ contains
 
     real (kind=real_kind)                          :: maxcflx, maxcfly
     real (kind=real_kind) :: dp_np1(np,np)
-    logical :: compute_diagnostics, compute_energy
 
     ! ===================================
     ! Main timestepping loop
@@ -821,22 +805,6 @@ contains
        nstep_end = tl%nstep + qsplit*rsplit  ! nstep at end of this routine
     endif
 
-    ! compute diagnostics and energy for STDOUT
-    ! compute energy if we are using an energy fixer
-    compute_diagnostics=.false.
-    compute_energy=energy_fixer > 0
-
-    if (MODULO(nstep_end,statefreq)==0 .or. nstep_end==tl%nstep0) then
-       compute_diagnostics=.true.
-       compute_energy = .true.
-    endif
-
-    if(disable_diagnostics) compute_diagnostics=.false.
-
-    if (compute_diagnostics) &
-       call prim_diag_scalars(elem,hvcoord,tl,4,.true.,nets,nete)
-
-#ifdef CAM
     ! ftype=2  Q was adjusted by physics, but apply u,T forcing here
     ! ftype=1  forcing was applied time-split in CAM coupling layer
     ! ftype=0 means forcing apply here
@@ -846,13 +814,6 @@ contains
       call ApplyCAMForcing(elem, fvm, hvcoord,tl%n0,n0_qdp, dt_remap,nets,nete)
     end if
     if (ftype==2) call ApplyCAMForcing_dynamics(elem, hvcoord,tl%n0,dt_remap,nets,nete)
-#endif
-
-    ! E(1) Energy after CAM forcing
-    if (compute_energy) call prim_energy_halftimes(elem,hvcoord,tl,1,.true.,nets,nete)
-
-    ! qmass and variance, using Q(n0),Qdp(n0)
-    if (compute_diagnostics) call prim_diag_scalars(elem,hvcoord,tl,1,.true.,nets,nete)
 
     ! initialize dp3d from ps
     if (rsplit>0) then
@@ -870,10 +831,10 @@ contains
 
 
     ! loop over rsplit vertically lagrangian timesteps
-    call prim_step(elem, fvm, hybrid,nets,nete, dt, tl, hvcoord,compute_diagnostics)
+    call prim_step(elem, fvm, hybrid,nets,nete, dt, tl, hvcoord)
     do r=2,rsplit
        call TimeLevel_update(tl,"leapfrog")
-       call prim_step(elem, fvm, hybrid,nets,nete, dt, tl, hvcoord,.false.)
+       call prim_step(elem, fvm, hybrid,nets,nete, dt, tl, hvcoord)
     enddo
     ! defer final timelevel update until after remap and diagnostics
 
@@ -921,17 +882,10 @@ contains
     !   u(np1)   dynamics at  t+dt_remap
     !
     !   Q(1)   Q at t+dt_remap
-    if (compute_diagnostics) call prim_diag_scalars(elem,hvcoord,tl,2,.false.,nets,nete)
-    if (compute_energy) call prim_energy_halftimes(elem,hvcoord,tl,2,.false.,nets,nete)
 
     if (energy_fixer > 0) then
        call prim_energy_fixer(elem,hvcoord,hybrid,tl,nets,nete,nsubstep)
     endif
-
-    if (compute_diagnostics) then
-       call prim_diag_scalars(elem,hvcoord,tl,3,.false.,nets,nete)
-       call prim_energy_halftimes(elem,hvcoord,tl,3,.false.,nets,nete)
-     endif
 
     ! =================================
     ! update dynamics time level pointers
@@ -944,15 +898,9 @@ contains
     !   u(np1)   undefined
 
 
-    ! ============================================================
-    ! Print some diagnostic information
-    ! ============================================================
-    if (compute_diagnostics) then
-       call prim_printstate(elem, tl, hybrid,hvcoord,nets,nete, fvm)
-    end if
   end subroutine prim_run_subcycle
 
-  subroutine prim_step(elem, fvm, hybrid,nets,nete, dt, tl, hvcoord, compute_diagnostics)
+  subroutine prim_step(elem, fvm, hybrid,nets,nete, dt, tl, hvcoord)
 !
 !   Take qsplit dynamics steps and one tracer step
 !   for vertically lagrangian option, this subroutine does only the horizontal step
@@ -1001,7 +949,6 @@ contains
     real (kind=real_kind)                          :: maxcflx, maxcfly
 
     real (kind=real_kind) :: dp_np1(np,np)
-    logical :: compute_diagnostics
 
     dt_q = dt*qsplit
 
@@ -1060,11 +1007,11 @@ contains
                  ! FV tracers still carry 3 timelevels
                  ! SE tracers only carry 2 timelevels
     call prim_advance_exp(elem, deriv(hybrid%ithr), hvcoord,   &
-         hybrid, dt, tl, nets, nete, compute_diagnostics)
+         hybrid, dt, tl, nets, nete)
     do n=2,qsplit
        call TimeLevel_update(tl,"leapfrog")
        call prim_advance_exp(elem, deriv(hybrid%ithr), hvcoord,   &
-            hybrid, dt, tl, nets, nete, .false.)
+            hybrid, dt, tl, nets, nete)
        ! defer final timelevel update until after Q update.
     enddo
     ! current dynamics state variables:
