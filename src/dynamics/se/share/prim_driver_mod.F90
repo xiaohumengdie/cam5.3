@@ -206,7 +206,7 @@ contains
     use control_mod,            only: statefreq, energy_fixer, ftype, qsplit, rsplit
     use prim_advance_mod,       only: applycamforcing
     use prim_advance_mod,       only: applycamforcing_dynamics
-    use prim_advection_mod,     only: vertical_remap
+    use vertremap_mod,          only: vertical_remap
 
     type (element_t) , intent(inout) :: elem(:)
 
