@@ -1,15 +1,15 @@
 module element_mod
 
-  use shr_kind_mod,           only: r8=>shr_kind_r8
-  use kinds,                  only: long_kind, int_kind
+  use shr_kind_mod,           only: r8=>shr_kind_r8, i8=>shr_kind_i8
   use coordinate_systems_mod, only: spherical_polar_t, cartesian2D_t, cartesian3D_t, distance
   use dimensions_mod,         only: np, npsq, nlev, nlevp, qsize_d, max_neigh_edges
-  use edgetype_mod,               only: edgedescriptor_t, rotation_t
+  use edgetype_mod,           only: edgedescriptor_t, rotation_t
   use gridgraph_mod,          only: gridvertex_t
 
   implicit none
   private
   integer, public, parameter :: timelevels = 3
+
 
 ! =========== PRIMITIVE-EQUATION DATA-STRUCTURES =====================
 
@@ -31,16 +31,13 @@ module element_mod
     real (kind=r8) :: Qdp   (np,np,nlev,qsize_d,2)               ! Tracer mass                        7
   end type elem_state_t
 
-  integer(kind=int_kind),public,parameter::StateComponents=8! num prognistics variables (for prim_restart_mod.F90)
+  integer, public, parameter :: StateComponents=8! num prognistics variables (for prim_restart_mod.F90)
 
   !___________________________________________________________________
   type, public :: derived_state_t
-
-    ! diagnostic variables for preqx solver
-
-    ! storage for subcycling tracers/dynamics
-    ! if (compute_mean_flux==1) vn0=time_avg(U*dp) else vn0=U at tracer-time t
-
+     !
+     ! storage for subcycling tracers/dynamics
+     !
     real (kind=r8) :: vn0  (np,np,2,nlev)                      ! velocity for SE tracer advection
     real (kind=r8) :: vstar(np,np,2,nlev)                      ! velocity on Lagrangian surfaces
     real (kind=r8) :: dpdiss_biharmonic(np,np,nlev)            ! mean dp dissipation tendency, if nu_p>0
@@ -61,21 +58,11 @@ module element_mod
     real (kind=r8) :: divdp(np,np,nlev)                        ! divergence of dp
     real (kind=r8) :: divdp_proj(np,np,nlev)                   ! DSSed divdp
 
-#ifdef CAM
     ! forcing terms for CAM
     real (kind=r8) :: FQ(np,np,nlev,qsize_d, 1)                ! tracer forcing
     real (kind=r8) :: FM(np,np,2,nlev, 1)                      ! momentum forcing
     real (kind=r8) :: FT(np,np,nlev, 1)                        ! temperature forcing
     real (kind=r8) :: omega_prescribed(np,np,nlev)             ! prescribed vertical tendency
-#else
-    ! forcing terms for HOMME
-    real (kind=r8) :: FQ(np,np,nlev,qsize_d, timelevels)       ! tracer forcing
-    real (kind=r8) :: FM(np,np,2,nlev, timelevels)             ! momentum forcing
-    real (kind=r8) :: FT(np,np,nlev, timelevels)               ! temperature forcing
-#endif
-
-    ! forcing terms for both CAM and HOMME
-    ! FQps for conserving dry mass in the presence of precipitation
 
     real (kind=r8) :: pecnd(np,np,nlev)                        ! pressure perturbation from condensate
     real (kind=r8) :: FQps(np,np,timelevels)                   ! forcing of FQ on ps_v
@@ -85,54 +72,6 @@ module element_mod
   !___________________________________________________________________
   type, public :: elem_accum_t
 
-#ifdef ENERGY_DIAGNOSTICS
-
-    ! Energy equation:
-    ! KE_t  = T1 + T2  + D1   + Err   +  vertical & horizontal advection terms
-    ! IE_t  = S1 + D2                 +  vertical & horizontal advection terms
-    ! PE_t  = S2
-    !
-    ! KEvert*  =  KE net vertical advection    (should be zero)
-    ! KEhoriz* =  KE net horizonatl advection  (should be zero)
-    ! IEvert*  =  IE net vertical advection    (should be zero)
-    ! IEhoriz* =  IE net horizonatl advection  (should be zero)
-    !
-    ! With leapfrog, energy equations are all exact except KE
-    ! (has an Err term that goes to zero as dt**2)
-    !
-    ! Transfer terms:
-    ! T1   = -< dp/dn u, RT_v/p grad_p >     KE<->IE:   T1 + T2-T2_s = S1
-    ! T2   = -< dp/dn u, grad_phi >          KE<->PE:   T2_s         = S2
-    ! T2_s = -< dp/dn u, grad_phis >
-    ! S1   = < Cp_star dp/dn , RT omega_p/Cp_star >
-    ! S2   = -< div (u dp/dn), phis >
-
-    real (kind=r8) :: KEvert1(np,np)                           ! term from continuity equ
-    real (kind=r8) :: KEvert2(np,np)                           ! term from momentum equ
-    real (kind=r8) :: IEvert1(np,np)                           ! term from continuity equ
-    real (kind=r8) :: IEvert2(np,np)                           ! term from T equ
-    real (kind=r8) :: IEvert1_wet(np,np)                       ! wet term from continuity equ
-    real (kind=r8) :: IEvert2_wet(np,np)                       ! wet term from T equ
-
-    real (kind=r8) :: KEhorz1(np,np)                           ! at time t
-    real (kind=r8) :: KEhorz2(np,np)                           ! after calling time_advance, these will be at time t-1
-    real (kind=r8) :: IEhorz1(np,np)
-    real (kind=r8) :: IEhorz2(np,np)
-    real (kind=r8) :: IEhorz1_wet(np,np)
-    real (kind=r8) :: IEhorz2_wet(np,np)
-
-    real (kind=r8) :: T1(np,np)
-    real (kind=r8) :: T2(np,np)
-    real (kind=r8) :: T2_s(np,np)
-    real (kind=r8) :: S1(np,np)
-    real (kind=r8) :: S1_wet(np,np)
-    real (kind=r8) :: S2(np,np)
-
-    ! the KE conversion term and diffusion term
-    real (kind=r8) :: DIFF(np,np,2,nlev)                       ! net hypervis term
-    real (kind=r8) :: DIFFT(np,np,nlev)                        ! net hypervis term
-    real (kind=r8) :: CONV(np,np,2,nlev)                       ! dpdn u dot CONV = T1 + T2
-#endif
 
     ! the "4" timelevels represents data computed at:
     !  1  t-.5
@@ -155,16 +94,16 @@ module element_mod
 ! ============= DATA-STRUCTURES COMMON TO ALL SOLVERS ================
 
   type, public :: index_t
-     integer(kind=int_kind) :: ia(npsq),ja(npsq)
-     integer(kind=int_kind) :: is,ie
-     integer(kind=int_kind) :: NumUniquePts
-     integer(kind=int_kind) :: UniquePtOffset
+     integer :: ia(npsq),ja(npsq)
+     integer :: is,ie
+     integer :: NumUniquePts
+     integer :: UniquePtOffset
   end type index_t
 
   !___________________________________________________________________
   type, public :: element_t
-     integer(kind=int_kind) :: LocalId
-     integer(kind=int_kind) :: GlobalId
+     integer :: LocalId
+     integer :: GlobalId
 
      ! Coordinate values of element points
      type (spherical_polar_t) :: spherep(np,np)                       ! Spherical coords of GLL points
@@ -188,8 +127,8 @@ module element_mod
      real (kind=r8)    :: tensorVisc(np,np,2,2)                !og, matrix V for tensor viscosity
 
      ! Edge connectivity information
-!     integer(kind=int_kind)   :: node_numbers(4)
-!     integer(kind=int_kind)   :: node_multiplicity(4)                 ! number of elements sharing corner node
+!     integer :: node_numbers(4)
+!     integer :: node_multiplicity(4)                 ! number of elements sharing corner node
 
      type (GridVertex_t)      :: vertex                               ! element grid vertex information
      type (EdgeDescriptor_t)  :: desc
@@ -220,7 +159,7 @@ module element_mod
      real (kind=r8)    :: spheremp(np,np)                      ! mass matrix on v and p grid
      real (kind=r8)    :: rspheremp(np,np)                     ! inverse mass matrix on v and p grid
 
-     integer(kind=long_kind)  :: gdofP(np,np)                         ! global degree of freedom (P-grid)
+     integer(i8) :: gdofP(np,np)                     ! global degree of freedom (P-grid)
 
      real (kind=r8)    :: fcor(np,np)                          ! Coreolis term
 

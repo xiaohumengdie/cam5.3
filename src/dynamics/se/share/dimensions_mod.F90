@@ -30,7 +30,6 @@ module dimensions_mod
   integer, public  :: max_corner_elem               = 1 !max_elements_attached_to_node-3
   integer, public  :: max_neigh_edges               = 8 !4 + 4*max_corner_elem
 
-
   public :: qsize,qsize_d
 
   integer, public :: ne
@@ -40,8 +39,6 @@ module dimensions_mod
   integer, public :: nPhysProc                          ! This is the number of physics processors/ per dynamics processor
   integer, public :: nnodes,npart,nmpi_per_node
   integer, public :: GlobalUniqueCols
-
-
 
   public :: set_mesh_dimensions
 

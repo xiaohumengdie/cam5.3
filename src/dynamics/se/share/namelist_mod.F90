@@ -10,32 +10,19 @@ module namelist_mod
        MAX_FILE_LEN,  &
        partmethod,    &       ! Mesh partitioning method (METIS)
        topology,      &       ! Mesh topology
-       uselapi,       &
        multilevel,    &
        numnodes,      &
-       sub_case,      &
        tasknum,       &       ! used dg model in AIX machine
        remapfreq,     &       ! number of steps per remapping call
        remap_type,    &       ! selected remapping option
        statefreq,     &       ! number of steps per printstate call
-       accumfreq,     &       ! frequency in steps of accumulation
-       accumstart,    &       ! model day to start accumulating state variables
-       accumstop,     &       ! model day to stop  accumulating state variables
-       restartfreq,   &
-       restartfile,   &       ! name of the restart file for INPUT
-       restartdir,    &       ! name of the restart directory for OUTPUT
        runtype,       &
-       tracer_advection_formulation, &   ! conservation or non-conservation formulaton
        tstep_type, &
        cubed_sphere_map, &
-       compute_mean_flux, &
        qsplit, &
        rsplit, &
        physics, &
        rk_stage_user, &
-       LFTfreq,       &
-       TRACERADV_TOTAL_DIVERGENCE, &
-       TRACERADV_UGRADQ, &
        ftype,        &
        energy_fixer,        &
        limiter_option, &
@@ -57,12 +44,8 @@ module namelist_mod
        smooth_sgh_numcycle, &
        smooth_phis_nudt, &
        initial_total_mass, &  ! set > 0 to set the initial_total_mass
-       u_perturb,     &          ! J&W bareclinic test perturbation size
        columnpackage, &
        moisture,      &
-       vform,           &
-       vfile_mid,       &
-       vfile_int,       &
        vert_remap_q_alg
       
 
@@ -128,7 +111,6 @@ module namelist_mod
                      se_ne,            &
                      se_limiter_option, &
                      npart,         &
-                     uselapi,       &
                      multilevel,    &
                      useframes,     &
                      numnodes,      &
@@ -137,18 +119,12 @@ module namelist_mod
                      remapfreq,     &       ! number of steps per remapping call
                      remap_type,    &       ! selected remapping option
                      statefreq,     &       ! number of steps per printstate call
-                     accumfreq,     &       ! frequency in steps of accumulation
-                     accumstart,    &       ! model day to start accumulating state variables
-                     accumstop,     &       ! model day to stop  accumulating state variables
-                     tracer_advection_formulation, &
                      tstep_type, &
-                     compute_mean_flux, &
                      cubed_sphere_map, &
                      qsplit, &
                      rsplit, &
                      physics, &             ! The type of physics, 0=none, 1=multicloud or 2= emanuel.
                      rk_stage_user, &
-                     LFTfreq,       &
                      se_ftype,        &       ! forcing type
                      energy_fixer,        &       ! forcing type
                      fine_ne,       &
@@ -169,7 +145,6 @@ module namelist_mod
                      smooth_sgh_numcycle, &
                      smooth_phis_nudt, &
                      initial_total_mass, &
-                     u_perturb,     &
                      rotate_grid,   &
                      mesh_file,     &               ! Name of mesh file
                      vert_remap_q_alg
@@ -197,7 +172,6 @@ module namelist_mod
     npart         = 1
     useframes     = 0
     multilevel    = 1
-    uselapi       = .TRUE.
     ! set all CAM defaults
     ! CAM requires forward-in-time, subcycled dynamics
     ! RK2 3 stage tracers, sign-preserving conservative
@@ -212,10 +186,7 @@ module namelist_mod
     se_phys_tscale=0
     se_nsplit = 1
     qsize = qsize_d
-    sub_case      = 1
     numnodes      = -1
-    restartfreq   = -100
-    restartdir    = "./restart/"
     runtype       = 0
     statefreq     = 1
     remapfreq     = 240
@@ -227,9 +198,6 @@ module namelist_mod
     initial_total_mass=0
     mesh_file='none'
     ne              = 0
-#ifdef _PRIMDG
-    tracer_advection_formulation  = TRACERADV_UGRADQ
-#endif
 
 
     ! =======================
@@ -269,14 +237,6 @@ module namelist_mod
       !=================================
       PARTMETHOD = SFCURVE
 #endif
-       ! ========================
-       ! if this is a restart run
-       ! ========================
-       if(runtype .eq. 1) then
-          write(iulog,*)"readnl: restartfile = ",restartfile
-       else if(runtype < 0) then
-          write(iulog,*)'readnl: runtype=', runtype,' interpolation mode '
-       endif
 
 !      Default interpolation grid  (0 = auto compute based on ne,nv)  interpolation is off by default
 #ifdef PIO_INTERP
@@ -385,14 +345,9 @@ module namelist_mod
     call MPI_bcast(qsize     ,1,MPIinteger_t,par%root,par%comm,ierr)
 
 
-    call MPI_bcast(sub_case ,1,MPIinteger_t,par%root,par%comm,ierr)
     call MPI_bcast(remapfreq ,1,MPIinteger_t,par%root,par%comm,ierr)
     call MPI_bcast(remap_type, MAX_STRING_LEN, MPIChar_t, par%root, par%comm, ierr)
     call MPI_bcast(statefreq ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(accumfreq ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(accumstart,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(accumstop ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(restartfreq,1,MPIinteger_t,par%root,par%comm,ierr)
     call MPI_bcast(multilevel ,1,MPIinteger_t,par%root,par%comm,ierr)
     call MPI_bcast(useframes ,1,MPIinteger_t,par%root,par%comm,ierr)
     call MPI_bcast(runtype   ,1,MPIinteger_t,par%root,par%comm,ierr)
@@ -425,29 +380,17 @@ module namelist_mod
     call MPI_bcast(smooth_sgh_numcycle,1,MPIinteger_t   ,par%root,par%comm,ierr)
     call MPI_bcast(smooth_phis_nudt,1,MPIreal_t   ,par%root,par%comm,ierr)
     call MPI_bcast(initial_total_mass ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(u_perturb     ,1,MPIreal_t   ,par%root,par%comm,ierr)
     call MPI_bcast(rotate_grid   ,1,MPIreal_t   ,par%root,par%comm,ierr)
     call MPI_bcast(mesh_file,MAX_FILE_LEN,MPIChar_t ,par%root,par%comm,ierr)
-    call MPI_bcast(tracer_advection_formulation,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(tstep_type,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(compute_mean_flux,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(cubed_sphere_map,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(qsplit,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(rsplit,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(physics,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(rk_stage_user,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(LFTfreq,1,MPIinteger_t ,par%root,par%comm,ierr)
     call MPI_bcast(moisture,MAX_STRING_LEN,MPIChar_t ,par%root,par%comm,ierr)
     call MPI_bcast(columnpackage,MAX_STRING_LEN,MPIChar_t ,par%root,par%comm,ierr)
 
-    call MPI_bcast(restartfile,MAX_STRING_LEN,MPIChar_t ,par%root,par%comm,ierr)
-    call MPI_bcast(restartdir,MAX_STRING_LEN,MPIChar_t ,par%root,par%comm,ierr)
-
-    call MPI_bcast(uselapi,1,MPIlogical_t,par%root,par%comm,ierr)
-
-    call MPI_bcast(vform    ,MAX_STRING_LEN,MPIChar_t  ,par%root,par%comm,ierr)
-    call MPI_bcast(vfile_mid,MAX_STRING_LEN,MPIChar_t  ,par%root,par%comm,ierr)
-    call MPI_bcast(vfile_int,MAX_STRING_LEN,MPIChar_t  ,par%root,par%comm,ierr)
 
     if (mesh_file /= "none" .AND. ne /=0) then
       write (*,*) "namelist_mod: mesh_file:",mesh_file, &
@@ -549,7 +492,6 @@ module namelist_mod
     if (par%masterproc) then
        write(iulog,*)"done reading namelist..."
 
-       write(iulog,*)"readnl: accum         = ",accumfreq,accumstart,accumstop
 
        write(iulog,*)"readnl: topology      = ",TRIM( TOPOLOGY )
 
@@ -562,8 +504,6 @@ module namelist_mod
        write(iulog,*)'readnl: npart         = ',npart
 
        print *
-       write(iulog,*)"readnl: LF-trapazoidal freq= ",LFTfreq
-       write(iulog,*)"readnl: tracer_advection_formulation  = ",tracer_advection_formulation
        write(iulog,*)"readnl: tstep_type    = ",tstep_type
        write(iulog,*)"readnl: vert_remap_q_alg  = ",vert_remap_q_alg
        write(iulog,*)"readnl: se_nsplit         = ", NSPLIT

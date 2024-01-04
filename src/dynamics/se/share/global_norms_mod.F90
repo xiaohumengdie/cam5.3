@@ -1,10 +1,9 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module global_norms_mod
-  use kinds, only : iulog
-  use edgetype_mod, only : EdgeBuffer_t
+
+  use shr_kind_mod, only: r8=>shr_kind_r8
+  use cam_logfile,  only: iulog
+  use edgetype_mod, only: EdgeBuffer_t
+
   implicit none
   private
   save
@@ -37,36 +36,35 @@ contains
   ! ================================
   ! --------------------------
   function global_integral(elem, h,hybrid,npts,nets,nete) result(I_sphere)
-    use kinds,       only : real_kind
-    use hybrid_mod,  only : hybrid_t
-    use element_mod, only : element_t
-    use dimensions_mod, only : np, nelemd
-    use physical_constants, only : dd_pi
-    use parallel_mod, only: global_shared_buf, global_shared_sum
+    use hybrid_mod,     only: hybrid_t
+    use element_mod,    only: element_t
+    use dimensions_mod, only: np, nelemd
+    use physconst,      only: pi
+    use parallel_mod,   only: global_shared_buf, global_shared_sum
 
     type(element_t)      , intent(in) :: elem(:)
     integer              , intent(in) :: npts,nets,nete
-    real (kind=real_kind), intent(in) :: h(npts,npts,nets:nete)
+    real (kind=r8), intent(in) :: h(npts,npts,nets:nete)
     type (hybrid_t)      , intent(in) :: hybrid
 
-    real (kind=real_kind) :: I_sphere
+    real (kind=r8) :: I_sphere
 
-    real (kind=real_kind) :: I_priv
-    real (kind=real_kind) :: I_shared
+    real (kind=r8) :: I_priv
+    real (kind=r8) :: I_shared
     common /gblintcom/I_shared
 
     ! Local variables
 
     integer :: ie,j,i
-    real(kind=real_kind) :: I_tmp(1)
+    real(kind=r8) :: I_tmp(1)
 
-    real (kind=real_kind) :: da
-    real (kind=real_kind) :: J_tmp(nets:nete)
+    real (kind=r8) :: da
+    real (kind=r8) :: J_tmp(nets:nete)
 !
 ! This algorythm is independent of thread count and task count.
 ! This is a requirement of consistancy checking in cam.
 !
-    J_tmp = 0.0D0
+    J_tmp = 0.0_r8
 
        do ie=nets,nete
           do j=1,np
@@ -75,13 +73,13 @@ contains
                 J_tmp(ie) = J_tmp(ie) + da*h(i,j,ie)
              end do
           end do
-       end do       
+       end do
     do ie=nets,nete
       global_shared_buf(ie,1) = J_tmp(ie)
     enddo
     call wrap_repro_sum(nvars=1, comm=hybrid%par%comm)
     I_tmp = global_shared_sum(1)
-    I_sphere = I_tmp(1)/(4.0D0*DD_PI)
+    I_sphere = I_tmp(1)/(4.0_r8*PI)
 
   end function global_integral
 
@@ -94,14 +92,13 @@ contains
   ! ================================
 
   subroutine test_global_integral(elem,hybrid,nets,nete,mindxout)
-    use kinds,       only : real_kind
     use hybrid_mod,  only : hybrid_t
     use element_mod, only : element_t
     use dimensions_mod, only : np,ne, nelem, nelemd
     use mesh_mod,     only : MeshUseMeshFile          
 
     use reduction_mod, only : ParallelMin,ParallelMax
-    use physical_constants, only : rrearth, rearth,dd_pi
+    use physconst,      only: ra, rearth, pi
     use parallel_mod, only : abortmp, global_shared_buf, global_shared_sum
     use edgetype_mod, only : EdgeBuffer_t
     use edge_mod, only : initedgebuffer, FreeEdgeBuffer, edgeVpack, edgeVunpack
@@ -111,29 +108,29 @@ contains
     integer              , intent(in) :: nets,nete
     type (hybrid_t)      , intent(in) :: hybrid
 
-    real (kind=real_kind),intent(out), optional :: mindxout
+    real (kind=r8),intent(out), optional :: mindxout
 
-    real (kind=real_kind)             :: I_sphere
+    real (kind=r8)             :: I_sphere
 
     ! Local variables
-    real (kind=real_kind) :: h(np,np,nets:nete)
+    real (kind=r8) :: h(np,np,nets:nete)
     ! Element statisics
-    real (kind=real_kind) :: min_area,max_area,avg_area, max_ratio
-    real (kind=real_kind) :: min_min_dx, max_min_dx, avg_min_dx
-    real (kind=real_kind) :: min_normDinv, max_normDinv
-    real (kind=real_kind) :: min_len
+    real (kind=r8) :: min_area,max_area,avg_area, max_ratio
+    real (kind=r8) :: min_min_dx, max_min_dx, avg_min_dx
+    real (kind=r8) :: min_normDinv, max_normDinv
+    real (kind=r8) :: min_len
     integer :: ie,corner, i, j,nlon
 
 
     h(:,:,nets:nete)=1.0D0
 
-    ! Calculate surface area by integrating 1.0d0 over sphere and dividing by 4*DD_PI
+    ! Calculate surface area by integrating 1.0_r8 over sphere and dividing by 4*DD_PI
     ! (Should be 1)
     I_sphere = global_integral(elem, h(:,:,nets:nete),hybrid,np,nets,nete)
 
     min_area=1d99
     max_area=0
-    avg_area=0_real_kind
+    avg_area=0_r8
 
     max_ratio = 0
 
@@ -142,7 +139,7 @@ contains
 
     min_min_dx=1d99
     max_min_dx=0
-    avg_min_dx=0_real_kind
+    avg_min_dx=0_r8
 
     do ie=nets,nete
        
@@ -182,9 +179,9 @@ contains
     avg_min_dx = global_shared_sum(2)/dble(nelem)
 
     ! Physical units for area
-    min_area = min_area*rearth*rearth/1000000_real_kind
-    max_area = max_area*rearth*rearth/1000000_real_kind
-    avg_area = avg_area*rearth*rearth/1000000_real_kind
+    min_area = min_area*rearth*rearth/1000000_r8
+    max_area = max_area*rearth*rearth/1000000_r8
+    avg_area = avg_area*rearth*rearth/1000000_r8
 
 
     ! for an equation du/dt = i c u, leapfrog is stable for |c u dt| < 1
@@ -201,7 +198,7 @@ contains
        write(iulog,'(a,f9.3)') 'Element area:  max/min',(max_area/min_area)
        if (.not.MeshUseMeshFile) then 
            write(iulog,'(a,f6.3,f8.2)') "Average equatorial node spacing (deg, km) = ", &
-                dble(90)/dble(ne*(np-1)), DD_PI*rearth/(2000.0d0*dble(ne*(np-1)))
+                dble(90)/dble(ne*(np-1)), PI*rearth/(2000.0_r8*dble(ne*(np-1)))
        end if
        write(iulog,'(a,2f9.3)') 'norm of Dinv (min, max): ', min_normDinv, max_normDinv
        write(iulog,'(a,1f8.2)') 'Max Dinv-based element distortion: ', max_ratio
@@ -212,8 +209,8 @@ contains
 
     if(present(mindxout)) then
         ! min_len now based on norm(Dinv)
-        min_len = 0.002d0*rearth/(dble(np-1)*max_normDinv)
-        mindxout=1000_real_kind*min_len
+        min_len = 0.002_r8*rearth/(dble(np-1)*max_normDinv)
+        mindxout=1000_r8*min_len
     end if
 
   end subroutine test_global_integral
@@ -231,271 +228,282 @@ contains
   ! ================================
 
   subroutine print_cfl(elem,hybrid,nets,nete,dtnu)
-!
-!   estimate various CFL limits
-!   also, for variable resolution viscosity coefficient, make sure
-!   worse viscosity CFL (given by dtnu) is not violated by reducing 
-!   viscosity coefficient in regions where CFL is violated
-!
-    use kinds,       only : real_kind
-    use hybrid_mod,  only : hybrid_t
-    use element_mod, only : element_t
-    use dimensions_mod, only : np,ne,nelem,nelemd,nc,nhe
-    use quadrature_mod, only : gausslobatto, quadrature_t
 
-    use reduction_mod, only : ParallelMin,ParallelMax
-    use physical_constants, only : rrearth, rearth,dd_pi
-    use control_mod, only : nu, nu_q, nu_div, hypervis_order, nu_top, hypervis_power, &
-                            fine_ne, rk_stage_user, max_hypervis_courant, hypervis_scaling
+
+    !
+    !   estimate various CFL limits
+    !   also, for variable resolution viscosity coefficient, make sure
+    !   worse viscosity CFL (given by dtnu) is not violated by reducing
+    !   viscosity coefficient in regions where CFL is violated
+    !
+    use hybrid_mod,     only: hybrid_t
+    use element_mod,    only: element_t
+    use dimensions_mod, only: np,ne,nelem,nelemd,nc,nhe
+
+    use quadrature_mod, only: gausslobatto, quadrature_t
+    
+    use reduction_mod,  only: ParallelMin,ParallelMax
+    use physconst,      only: ra, rearth, pi
+    use control_mod,    only: nu, nu_div, nu_q, nu_top, hypervis_order, fine_ne, rk_stage_user, max_hypervis_courant
+    use control_mod,    only: hypervis_power, hypervis_scaling
+    use cam_abortutils, only: endrun
+    use parallel_mod,   only: global_shared_buf, global_shared_sum
+    use edge_mod,       only: initedgebuffer, FreeEdgeBuffer, edgeVpack, edgeVunpack
+    use bndry_mod,      only: bndry_exchangeV
+    use time_mod,       only: tstep
     use control_mod, only : tracer_transport_type
     use control_mod, only : TRACERTRANSPORT_SE_GLL
-    use parallel_mod, only : abortmp, global_shared_buf, global_shared_sum
-    use edgetype_mod, only : EdgeBuffer_t
-    use edge_mod, only : initedgebuffer, FreeEdgeBuffer, edgeVpack, edgeVunpack
-    use bndry_mod, only : bndry_exchangeV
-    use time_mod, only : tstep
-
+  
     type(element_t)      , intent(inout) :: elem(:)
     integer              , intent(in) :: nets,nete
     type (hybrid_t)      , intent(in) :: hybrid
-    real (kind=real_kind), intent(in) :: dtnu  
-
+    real (kind=r8), intent(in) :: dtnu  
+    !
+    ! actual time-steps
+    !
     ! Element statisics
-    real (kind=real_kind) :: min_max_dx,max_unif_dx   ! used for normalizing scalar HV
-    real (kind=real_kind) :: max_normDinv  ! used for CFL
-    real (kind=real_kind) :: min_hypervis, max_hypervis, avg_hypervis, stable_hv
-    real (kind=real_kind) :: normDinv_hypervis
-    real (kind=real_kind) :: x, y, noreast, nw, se, sw
-    real (kind=real_kind), dimension(np,np,nets:nete) :: zeta
-    real (kind=real_kind) :: lambda_max, lambda_vis, min_gw, lambda, nu_div_actual
+    real (kind=r8) :: min_max_dx,max_unif_dx   ! used for normalizing scalar HV
+    real (kind=r8) :: max_normDinv  ! used for CFL
+    real (kind=r8) :: min_hypervis, max_hypervis, avg_hypervis, stable_hv
+    real (kind=r8) :: normDinv_hypervis
+    real (kind=r8) :: x, y, noreast, nw, se, sw
+    real (kind=r8), dimension(np,np,nets:nete) :: zeta
+    real (kind=r8) :: lambda_max, lambda_vis, min_gw, lambda, nu_div_actual
+
     integer :: ie,corner, i, j, rowind, colind
     type (quadrature_t)    :: gp
 
 
+
+    
     ! Eigenvalues calculated by folks at UMich (Paul U & Jared W)
     select case (np)
-        case (2)
-            lambda_max = 0.5d0
-            lambda_vis = 0.0d0  ! need to compute this
-        case (3)
-            lambda_max = 1.5d0
-            lambda_vis = 12.0d0
-        case (4)
-            lambda_max = 2.74d0
-            lambda_vis = 30.0d0
-        case (5)
-            lambda_max = 4.18d0
-            lambda_vis = 91.6742d0
-        case (6)
-            lambda_max = 5.86d0
-            lambda_vis = 190.1176d0
-        case (7)
-            lambda_max = 7.79d0
-            lambda_vis = 374.7788d0
-        case (8)
-            lambda_max = 10.0d0
-            lambda_vis = 652.3015d0
-        case DEFAULT
-            lambda_max = 0.0d0
-            lambda_vis = 0.0d0
+    case (2)
+      lambda_max = 0.5_r8
+      lambda_vis = 0.0_r8  ! need to compute this
+    case (3)
+      lambda_max = 1.5_r8
+      lambda_vis = 12.0_r8
+    case (4)
+      lambda_max = 2.74_r8
+      lambda_vis = 30.0_r8
+    case (5)
+      lambda_max = 4.18_r8
+      lambda_vis = 91.6742_r8
+    case (6)
+      lambda_max = 5.86_r8
+      lambda_vis = 190.1176_r8
+    case (7)
+      lambda_max = 7.79_r8
+      lambda_vis = 374.7788_r8
+    case (8)
+      lambda_max = 10.0_r8
+      lambda_vis = 652.3015_r8
+    case DEFAULT
+      lambda_max = 0.0_r8
+      lambda_vis = 0.0_r8
     end select
-
-    if ((lambda_max.eq.0d0).and.(hybrid%masterthread)) then
-        print*, "lambda_max not calculated for NP = ",np
-        print*, "Estimate of gravity wave timestep will be incorrect"
+    
+    if ((lambda_max.eq.0_r8).and.(hybrid%masterthread)) then
+      print*, "lambda_max not calculated for NP = ",np
+      print*, "Estimate of gravity wave timestep will be incorrect"
     end if
-    if ((lambda_vis.eq.0d0).and.(hybrid%masterthread)) then
-        print*, "lambda_vis not calculated for NP = ",np
-        print*, "Estimate of viscous CFLs will be incorrect"
+    if ((lambda_vis.eq.0_r8).and.(hybrid%masterthread)) then
+      print*, "lambda_vis not calculated for NP = ",np
+      print*, "Estimate of viscous CFLs will be incorrect"
     end if
-
+    
     do ie=nets,nete
-      elem(ie)%variable_hyperviscosity = 1.0
+      elem(ie)%variable_hyperviscosity = 1.0_r8
     end do
-
+    
     gp=gausslobatto(np)
     min_gw = minval(gp%weights)
 
     max_normDinv=0
-    min_max_dx=1d99
+    min_max_dx=1E99_r8
     do ie=nets,nete
-        max_normDinv = max(max_normDinv,elem(ie)%normDinv)
-        min_max_dx = min(min_max_dx,elem(ie)%dx_long)
+      max_normDinv  = max(max_normDinv,elem(ie)%normDinv)
+      min_max_dx    = min(min_max_dx,elem(ie)%dx_long)
     enddo
-    max_normDinv=ParallelMax(max_normDinv,hybrid)
-    min_max_dx=ParallelMin(min_max_dx,hybrid)
+    max_normDinv = ParallelMax(max_normDinv,hybrid)
 
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!  SCALAR, RESOLUTION-AWARE HYPERVISCOSITY
-!  this block of code initializes the variable_hyperviscsoity() array
-!  based on largest length scale in each element and user specified scaling
-!  it then limits the coefficient if the user specifed a max CFL
-!  this limiting is based on the smallest length scale of each element
-!  since that controls the CFL.
-!  Mike Levy 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    min_max_dx   = ParallelMin(min_max_dx,hybrid)    
+
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !  SCALAR, RESOLUTION-AWARE HYPERVISCOSITY
+    !  this block of code initializes the variable_hyperviscsoity() array
+    !  based on largest length scale in each element and user specified scaling
+    !  it then limits the coefficient if the user specifed a max CFL
+    !  this limiting is based on the smallest length scale of each element
+    !  since that controls the CFL.
+    !  Mike Levy
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     if (hypervis_power /= 0) then
+      
+      min_hypervis = 1d99
+      max_hypervis = 0
+      avg_hypervis = 0
+      
+      
+      max_unif_dx = min_max_dx  ! use this for average resolution, unless:
+      !       viscosity in namelist specified for smallest element:
+      if (fine_ne>0) then
+        ! viscosity in namelist specified for regions with a resolution
+        ! equivilant to a uniform grid with ne=fine_ne
+        if (np /= 4 ) call endrun('ERROR: setting fine_ne only supported with NP=4')
+        max_unif_dx = (111.28_r8*30)/dble(fine_ne)   ! in km
+      endif
+      
+      !
+      ! note: if L = eigenvalue of metinv, then associated length scale (km) is
+      ! dx = 1.0_r8/( sqrt(L)*0.5_r8*dble(np-1)*ra*1000.0_r8)
+      !
+      !       for viscosity *tensor*, we take at each point:
+      !            nu1 = nu*(dx1/max_unif_dx)**3.2      dx1 associated with eigenvalue 1
+      !            nu2 = nu*(dx2/max_unif_dx)**3.2      dx2 associated with eigenvalue 2
+      !       with this approach:
+      !          - with this formula, no need to adjust for CFL violations
+      !          - if nu comes from a 3.2 scaling that is stable for coarse and fine resolutions,
+      !            this formulat will be stable.
+      !          - gives the correct answer in long skinny rectangles:
+      !            large viscosity in the long direction, small viscosity in the short direction
+      !
+      normDinv_hypervis = 0
+      do ie=nets,nete
+        ! variable viscosity based on map from ulatlon -> ucontra
+        
+        ! dx_long
+        elem(ie)%variable_hyperviscosity = sqrt((elem(ie)%dx_long/max_unif_dx) ** hypervis_power)
+        elem(ie)%hv_courant = dtnu*(elem(ie)%variable_hyperviscosity(1,1)**2) * &
+             (lambda_vis**2) * ((ra*elem(ie)%normDinv)**4)
+        
+        ! Check to see if this is stable
+        if (elem(ie)%hv_courant.gt.max_hypervis_courant) then
+          stable_hv = sqrt( max_hypervis_courant / &
+               (  dtnu * (lambda_vis)**2 * (ra*elem(ie)%normDinv)**4 ) )
+          
 
-        min_hypervis = 1d99
-        max_hypervis = 0
-        avg_hypervis = 0
 
 
-        max_unif_dx = min_max_dx  ! use this for average resolution, unless:
-!       viscosity in namelist specified for smallest element:
-        if (fine_ne>0) then
-           ! viscosity in namelist specified for regions with a resolution
-           ! equivilant to a uniform grid with ne=fine_ne
-           if (np /= 4 ) call abortmp('ERROR: setting fine_ne only supported with NP=4')
-           max_unif_dx = (111.28*30)/dble(fine_ne)   ! in km
-        endif
 
-! 
-! note: if L = eigenvalue of metinv, then associated length scale (km) is
-! dx = 1.0d0/( sqrt(L)*0.5d0*dble(np-1)*rrearth*1000.0d0)
-!
-!       for viscosity *tensor*, we take at each point: 
-!            nu1 = nu*(dx1/max_unif_dx)**3.2      dx1 associated with eigenvalue 1
-!            nu2 = nu*(dx2/max_unif_dx)**3.2      dx2 associated with eigenvalue 2
-!       with this approach:
-!          - with this formula, no need to adjust for CFL violations
-!          - if nu comes from a 3.2 scaling that is stable for coarse and fine resolutions,
-!            this formulat will be stable.  
-!          - gives the correct answer in long skinny rectangles:
-!            large viscosity in the long direction, small viscosity in the short direction 
-!            
-!
 
-        normDinv_hypervis = 0
 
-        do ie=nets,nete
-           ! variable viscosity based on map from ulatlon -> ucontra
 
-           ! dx_long
-           elem(ie)%variable_hyperviscosity = sqrt((elem(ie)%dx_long/max_unif_dx) ** hypervis_power)
-           elem(ie)%hv_courant = dtnu*(elem(ie)%variable_hyperviscosity(1,1)**2) &
-                                 * (lambda_vis**2) * ((rrearth*elem(ie)%normDinv)**4)
 
-            ! Check to see if this is stable
-            if (elem(ie)%hv_courant.gt.max_hypervis_courant) then
-                stable_hv = sqrt( max_hypervis_courant / &
-                     (  dtnu * (lambda_vis)**2 * (rrearth*elem(ie)%normDinv)**4 ) )
-
-!                make sure that: elem(ie)%hv_courant <=  max_hypervis_courant 
-                elem(ie)%variable_hyperviscosity = stable_hv
-                elem(ie)%hv_courant = dtnu*(stable_hv**2) * (lambda_vis)**2 * (rrearth*elem(ie)%normDinv)**4               
-            end if
-            normDinv_hypervis = max(normDinv_hypervis, elem(ie)%hv_courant/dtnu)
-
-            min_hypervis = min(min_hypervis, elem(ie)%variable_hyperviscosity(1,1))
-            max_hypervis = max(max_hypervis, elem(ie)%variable_hyperviscosity(1,1))
-            global_shared_buf(ie,1) = elem(ie)%variable_hyperviscosity(1,1)
+          !                make sure that: elem(ie)%hv_courant <=  max_hypervis_courant
+          elem(ie)%variable_hyperviscosity = stable_hv
+          elem(ie)%hv_courant = dtnu*(stable_hv**2) * (lambda_vis)**2 * (ra*elem(ie)%normDinv)**4
+        end if
+        normDinv_hypervis = max(normDinv_hypervis, elem(ie)%hv_courant/dtnu)
+        
+        min_hypervis = min(min_hypervis, elem(ie)%variable_hyperviscosity(1,1))
+        max_hypervis = max(max_hypervis, elem(ie)%variable_hyperviscosity(1,1))
+        global_shared_buf(ie,1) = elem(ie)%variable_hyperviscosity(1,1)
+      end do
+      
+      min_hypervis = ParallelMin(min_hypervis, hybrid)
+      max_hypervis = ParallelMax(max_hypervis, hybrid)
+      call wrap_repro_sum(nvars=1, comm=hybrid%par%comm)
+      avg_hypervis = global_shared_sum(1)/dble(nelem)
+      
+      normDinv_hypervis = ParallelMax(normDinv_hypervis, hybrid)
+      
+      ! apply DSS (aka assembly procedure) to variable_hyperviscosity (makes continuous)
+      call initEdgeBuffer(hybrid%par,edgebuf,elem,1)
+      do ie=nets,nete
+        zeta(:,:,ie) = elem(ie)%variable_hyperviscosity(:,:)*elem(ie)%spheremp(:,:)
+        call edgeVpack(edgebuf,zeta(1,1,ie),1,0,ie)
+      end do
+      call bndry_exchangeV(hybrid,edgebuf)
+      do ie=nets,nete
+        call edgeVunpack(edgebuf,zeta(1,1,ie),1,0,ie)
+        elem(ie)%variable_hyperviscosity(:,:) = zeta(:,:,ie)*elem(ie)%rspheremp(:,:)
+      end do
+      call FreeEdgeBuffer(edgebuf)
+      
+      ! replace hypervis w/ bilinear based on continuous corner values
+      do ie=nets,nete
+        noreast = elem(ie)%variable_hyperviscosity(np,np)
+        nw = elem(ie)%variable_hyperviscosity(1,np)
+        se = elem(ie)%variable_hyperviscosity(np,1)
+        sw = elem(ie)%variable_hyperviscosity(1,1)
+        do i=1,np
+          x = gp%points(i)
+          do j=1,np
+            y = gp%points(j)
+            elem(ie)%variable_hyperviscosity(i,j) = 0.25_r8*( &
+                 (1.0_r8-x)*(1.0_r8-y)*sw + &
+                 (1.0_r8-x)*(y+1.0_r8)*nw + &
+                 (x+1.0_r8)*(1.0_r8-y)*se + &
+                 (x+1.0_r8)*(y+1.0_r8)*noreast)
+          end do
         end do
-
-        min_hypervis = ParallelMin(min_hypervis, hybrid)
-        max_hypervis = ParallelMax(max_hypervis, hybrid)
-        call wrap_repro_sum(nvars=1, comm=hybrid%par%comm)
-        avg_hypervis = global_shared_sum(1)/dble(nelem)
-
-        normDinv_hypervis = ParallelMax(normDinv_hypervis, hybrid)
-
-        ! apply DSS (aka assembly procedure) to variable_hyperviscosity (makes continuous)
-        call initEdgeBuffer(hybrid%par,edgebuf,elem,1)
-        do ie=nets,nete
-            zeta(:,:,ie) = elem(ie)%variable_hyperviscosity(:,:)*elem(ie)%spheremp(:,:)
-            call edgeVpack(edgebuf,zeta(1,1,ie),1,0,ie)
-        end do
-        call bndry_exchangeV(hybrid,edgebuf)
-        do ie=nets,nete
-            call edgeVunpack(edgebuf,zeta(1,1,ie),1,0,ie)
-            elem(ie)%variable_hyperviscosity(:,:) = zeta(:,:,ie)*elem(ie)%rspheremp(:,:)
-        end do
-        call FreeEdgeBuffer(edgebuf)
-
-        ! replace hypervis w/ bilinear based on continuous corner values
-        do ie=nets,nete
-            noreast = elem(ie)%variable_hyperviscosity(np,np)
-            nw = elem(ie)%variable_hyperviscosity(1,np)
-            se = elem(ie)%variable_hyperviscosity(np,1)
-            sw = elem(ie)%variable_hyperviscosity(1,1)
-            do i=1,np
-                x = gp%points(i)
-                do j=1,np
-                    y = gp%points(j)
-                    elem(ie)%variable_hyperviscosity(i,j) = 0.25d0*( &
-                                            (1.0d0-x)*(1.0d0-y)*sw + &
-                                            (1.0d0-x)*(y+1.0d0)*nw + &
-                                            (x+1.0d0)*(1.0d0-y)*se + &
-                                            (x+1.0d0)*(y+1.0d0)*noreast)
-                end do
-            end do
-        end do
+      end do
     else  if (hypervis_scaling/=0) then
-       ! tensorHV.  New eigenvalues are the eigenvalues of the tensor V
-       ! formulas here must match what is in cube_mod.F90
-       ! for tensorHV, we scale out the rearth dependency
-       lambda = max_normDinv**2
-       normDinv_hypervis = (lambda_vis**2) * (max_normDinv**4) * &
-            (lambda**(-hypervis_scaling/2) )
+      ! tensorHV.  New eigenvalues are the eigenvalues of the tensor V
+      ! formulas here must match what is in cube_mod.F90
+      ! for tensorHV, we scale out the rearth dependency
+      lambda = max_normDinv**2
+      normDinv_hypervis = (lambda_vis**2) * (max_normDinv**4) * &
+           (lambda**(-hypervis_scaling/2) )
     else
-       ! constant coefficient formula:
-       normDinv_hypervis = (lambda_vis**2) * (rrearth*max_normDinv)**4
+      ! constant coefficient formula:
+      normDinv_hypervis = (lambda_vis**2) * (ra*max_normDinv)**4
     endif
-
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!  TENSOR, RESOLUTION-AWARE HYPERVISCOSITY
-!  The tensorVisc() array is computed in cube_mod.F90
-!  this block of code will DSS it so the tensor if C0
-!  and also make it bilinear in each element.
-!  Oksana Guba
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   if (hypervis_scaling /= 0) then
-#if 1
-    call initEdgeBuffer(hybrid%par,edgebuf,elem,1)
-    do rowind=1,2
-      do colind=1,2
-	do ie=nets,nete
-	  zeta(:,:,ie) = elem(ie)%tensorVisc(:,:,rowind,colind)*elem(ie)%spheremp(:,:)
-	  call edgeVpack(edgebuf,zeta(1,1,ie),1,0,ie)
-	end do
-
-	call bndry_exchangeV(hybrid,edgebuf)
-	do ie=nets,nete
-	  call edgeVunpack(edgebuf,zeta(1,1,ie),1,0,ie)
-          elem(ie)%tensorVisc(:,:,rowind,colind) = zeta(:,:,ie)*elem(ie)%rspheremp(:,:)
-	end do
-      enddo !rowind
-    enddo !colind
-    call FreeEdgeBuffer(edgebuf)
-#endif
-
-!IF BILINEAR MAP OF V NEEDED
-#if 1
-    do rowind=1,2
-      do colind=1,2
-    ! replace hypervis w/ bilinear based on continuous corner values
-	do ie=nets,nete
-	  noreast = elem(ie)%tensorVisc(np,np,rowind,colind)
-	  nw = elem(ie)%tensorVisc(1,np,rowind,colind)
-	  se = elem(ie)%tensorVisc(np,1,rowind,colind)
-	  sw = elem(ie)%tensorVisc(1,1,rowind,colind)
-	  do i=1,np
-	    x = gp%points(i)
-	    do j=1,np
-		y = gp%points(j)
-		elem(ie)%tensorVisc(i,j,rowind,colind) = 0.25d0*( &
-					(1.0d0-x)*(1.0d0-y)*sw + &
-					(1.0d0-x)*(y+1.0d0)*nw + &
-					(x+1.0d0)*(1.0d0-y)*se + &
-					(x+1.0d0)*(y+1.0d0)*noreast)
-	    end do
-	  end do
-	end do
-      enddo !rowind
-    enddo !colind
-#endif
+    
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !  TENSOR, RESOLUTION-AWARE HYPERVISCOSITY
+    !  The tensorVisc() array is computed in cube_mod.F90
+    !  this block of code will DSS it so the tensor if C0
+    !  and also make it bilinear in each element.
+    !  Oksana Guba
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    if (hypervis_scaling /= 0) then
+      
+      call initEdgeBuffer(hybrid%par,edgebuf,elem,1)
+      do rowind=1,2
+        do colind=1,2
+          do ie=nets,nete
+            zeta(:,:,ie) = elem(ie)%tensorVisc(:,:,rowind,colind)*elem(ie)%spheremp(:,:)
+            call edgeVpack(edgebuf,zeta(1,1,ie),1,0,ie)
+          end do
+          
+          call bndry_exchangeV(hybrid,edgebuf)
+          do ie=nets,nete
+            call edgeVunpack(edgebuf,zeta(1,1,ie),1,0,ie)
+            elem(ie)%tensorVisc(:,:,rowind,colind) = zeta(:,:,ie)*elem(ie)%rspheremp(:,:)
+          end do
+        enddo !rowind
+      enddo !colind
+      call FreeEdgeBuffer(edgebuf)
+      
+      !IF BILINEAR MAP OF V NEEDED
+      
+      do rowind=1,2
+        do colind=1,2
+          ! replace hypervis w/ bilinear based on continuous corner values
+          do ie=nets,nete
+            noreast = elem(ie)%tensorVisc(np,np,rowind,colind)
+            nw = elem(ie)%tensorVisc(1,np,rowind,colind)
+            se = elem(ie)%tensorVisc(np,1,rowind,colind)
+            sw = elem(ie)%tensorVisc(1,1,rowind,colind)
+            do i=1,np
+              x = gp%points(i)
+              do j=1,np
+                y = gp%points(j)
+                elem(ie)%tensorVisc(i,j,rowind,colind) = 0.25_r8*( &
+                     (1.0_r8-x)*(1.0_r8-y)*sw + &
+                     (1.0_r8-x)*(y+1.0_r8)*nw + &
+                     (x+1.0_r8)*(1.0_r8-y)*se + &
+                     (x+1.0_r8)*(y+1.0_r8)*noreast)
+              end do
+            end do
+          end do
+        enddo !rowind
+      enddo !colind      
     endif
     deallocate(gp%points)
     deallocate(gp%weights)
@@ -505,54 +513,55 @@ contains
 !    
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-     if (hybrid%masterthread) then
-       write(iulog,'(a,f10.2)') 'CFL estimates in terms of S=time step stability region'
-       write(iulog,'(a,f10.2)') '(i.e. advection w/leapfrog: S=1, viscosity w/forward Euler: S=2)'
-       if (rk_stage_user>0) then
-          write(iulog,'(a,f10.2,a)') 'SSP preservation (120m/s) RKSSP euler step dt  < S *', &
-               min_gw/(120.0d0*max_normDinv*rrearth),'s'
-       endif
-       if (tracer_transport_type == TRACERTRANSPORT_SE_GLL) then
-          write(iulog,'(a,f10.2,a)') 'Stability: advective (120m/s)   dt_tracer < S *',&
-               1/(120.0d0*max_normDinv*lambda_max*rrearth),'s'
-       end if
-       write(iulog,'(a,f10.2,a)') 'Stability: gravity wave(342m/s)   dt_dyn  < S *', &
-            1/(342.0d0*max_normDinv*lambda_max*rrearth),'s'
-       if (nu>0) then
-          if (hypervis_order==1) then
-              write(iulog,'(a,f10.2,a)') 'Stability: viscosity dt < S *',1/(((rrearth*max_normDinv)**2)*lambda_vis),'s'
-          endif
-          if (hypervis_order==2) then
-             ! counrant number = dtnu*normDinv_hypervis  < S
-             !  dt < S  1/nu*normDinv
-             write(iulog,'(a,f10.2,a)') "Stability: nu_q   hyperviscosity dt < S *", 1/(nu_q*normDinv_hypervis),'s'
-             write(iulog,'(a,f10.2,a)') "Stability: nu_vor hyperviscosity dt < S *", 1/(nu*normDinv_hypervis),'s'
-             
-             ! bug in nu_div implimentation:
-             ! we apply nu_ration=(nu_div/nu) in laplace, so it is applied 2x
-             ! making the effective nu_div = nu * (nu_div/nu)**2 
-             ! should be fixed - but need all CAM defaults adjusted, 
-             ! so we have to coordiante with CAM
-             nu_div_actual = nu_div**2/nu
-             write(iulog,'(a,f10.2,a)') "Stability: nu_div hyperviscosity dt < S *", 1/(nu_div_actual*normDinv_hypervis),'s'
-          endif
-       endif
-       if(nu_top>0) then
-          write(iulog,'(a,f10.2,a)') 'TOP3 viscosity CFL: dt < S*', &
-                                  1.0d0/(4*nu_top*((rrearth*max_normDinv)**2)*lambda_vis),'s'
-       end if
-      if (hypervis_power /= 0) then 
-        write(iulog,'(a,3e11.4)')'Hyperviscosity (dynamics): ave,min,max = ', &
-                                  nu*(/avg_hypervis**2,min_hypervis**2,max_hypervis**2/)
-!         print*, 'fine_ne = ', fine_ne
-!         print*, 'Using max_unif_dx = ', max_unif_dx
+    if (hybrid%masterthread) then
+      write(iulog,'(a,f10.2)') 'CFL estimates in terms of S=time step stability region'
+      write(iulog,'(a,f10.2)') '(i.e. advection w/leapfrog: S=1, viscosity w/forward Euler: S=2)'
+      if (rk_stage_user>0) then
+         write(iulog,'(a,f10.2,a)') 'SSP preservation (120m/s) RKSSP euler step dt  < S *', &
+              min_gw/(120.0_r8*max_normDinv*ra),'s'
+      endif
+      if (tracer_transport_type == TRACERTRANSPORT_SE_GLL) then
+         write(iulog,'(a,f10.2,a)') 'Stability: advective (120m/s)   dt_tracer < S *',&
+              1/(120.0_r8*max_normDinv*lambda_max*ra),'s'
       end if
+      write(iulog,'(a,f10.2,a)') 'Stability: gravity wave(342m/s)   dt_dyn  < S *', &
+           1/(342.0_r8*max_normDinv*lambda_max*ra),'s'
+      if (nu>0) then
+         if (hypervis_order==1) then
+             write(iulog,'(a,f10.2,a)') 'Stability: viscosity dt < S *',1/(((ra*max_normDinv)**2)*lambda_vis),'s'
+         endif
+         if (hypervis_order==2) then
+            ! counrant number = dtnu*normDinv_hypervis  < S
+            !  dt < S  1/nu*normDinv
+            write(iulog,'(a,f10.2,a)') "Stability: nu_q   hyperviscosity dt < S *", 1/(nu_q*normDinv_hypervis),'s'
+            write(iulog,'(a,f10.2,a)') "Stability: nu_vor hyperviscosity dt < S *", 1/(nu*normDinv_hypervis),'s'
+            
+            ! bug in nu_div implimentation:
+            ! we apply nu_ration=(nu_div/nu) in laplace, so it is applied 2x
+            ! making the effective nu_div = nu * (nu_div/nu)**2 
+            ! should be fixed - but need all CAM defaults adjusted, 
+            ! so we have to coordiante with CAM
+            nu_div_actual = nu_div**2/nu
+            write(iulog,'(a,f10.2,a)') "Stability: nu_div hyperviscosity dt < S *", 1/(nu_div_actual*normDinv_hypervis),'s'
+         endif
+      endif
+      if(nu_top>0) then
+         write(iulog,'(a,f10.2,a)') 'TOP3 viscosity CFL: dt < S*', &
+                                 1.0_r8/(4*nu_top*((ra*max_normDinv)**2)*lambda_vis),'s'
+      end if
+     if (hypervis_power /= 0) then 
+       write(iulog,'(a,3e11.4)')'Hyperviscosity (dynamics): ave,min,max = ', &
+                                 nu*(/avg_hypervis**2,min_hypervis**2,max_hypervis**2/)
+!        print*, 'fine_ne = ', fine_ne
+!        print*, 'Using max_unif_dx = ', max_unif_dx
+     end if
 
     end if
 
   end subroutine print_cfl
-
-  ! ================================
+  
+  ! 
+  ! ============================
   ! global_maximum:
   !
   ! Find global maximum on sphere
@@ -561,19 +570,18 @@ contains
 
   function global_maximum(h,hybrid,npts,nets,nete) result(Max_sphere)
 
-    use kinds, only : real_kind
     use hybrid_mod, only : hybrid_t
     use reduction_mod, only : red_max, pmax_mt
 
-    integer              , intent(in) :: npts,nets,nete     
-    real (kind=real_kind), intent(in) :: h(npts,npts,nets:nete)
+    integer              , intent(in) :: npts,nets,nete
+    real (kind=r8), intent(in) :: h(npts,npts,nets:nete)
     type (hybrid_t)      , intent(in) :: hybrid
 
-    real (kind=real_kind) :: Max_sphere
+    real (kind=r8) :: Max_sphere
 
     ! Local variables
 
-    real (kind=real_kind) :: redp(1)
+    real (kind=r8) :: redp(1)
 
     Max_sphere = MAXVAL(h(:,:,nets:nete))
 
@@ -592,23 +600,22 @@ contains
 
   function l1_snorm(elem, h,ht,hybrid,npts,nets,nete) result(l1)
 
-    use kinds, only : real_kind
     use element_mod, only : element_t
     use hybrid_mod, only : hybrid_t
 
     type(element_t)      , intent(in) :: elem(:)
     integer              , intent(in) :: npts,nets,nete
-    real (kind=real_kind), intent(in) :: h(npts,npts,nets:nete)  ! computed soln
-    real (kind=real_kind), intent(in) :: ht(npts,npts,nets:nete) ! true soln
+    real (kind=r8), intent(in) :: h(npts,npts,nets:nete)  ! computed soln
+    real (kind=r8), intent(in) :: ht(npts,npts,nets:nete) ! true soln
     type (hybrid_t)      , intent(in) :: hybrid
-    real (kind=real_kind)             :: l1     
+    real (kind=r8)             :: l1
 
     ! Local variables
 
-    real (kind=real_kind) :: dhabs(npts,npts,nets:nete)
-    real (kind=real_kind) :: htabs(npts,npts,nets:nete)
-    real (kind=real_kind) :: dhabs_int
-    real (kind=real_kind) :: htabs_int
+    real (kind=r8) :: dhabs(npts,npts,nets:nete)
+    real (kind=r8) :: htabs(npts,npts,nets:nete)
+    real (kind=r8) :: dhabs_int
+    real (kind=r8) :: htabs_int
     integer i,j,ie
 
     do ie=nets,nete
@@ -636,28 +643,27 @@ contains
   ! ===========================================================
 
   function l1_vnorm(elem, v,vt,hybrid,npts,nets,nete) result(l1)
-    use kinds, only : real_kind
     use element_mod, only : element_t
     use hybrid_mod, only : hybrid_t
 
     type(element_t)      , intent(in), target :: elem(:)
     integer              , intent(in) :: npts,nets,nete
-    real (kind=real_kind), intent(in) :: v(npts,npts,2,nets:nete)  ! computed soln
-    real (kind=real_kind), intent(in) :: vt(npts,npts,2,nets:nete) ! true soln
+    real (kind=r8), intent(in) :: v(npts,npts,2,nets:nete)  ! computed soln
+    real (kind=r8), intent(in) :: vt(npts,npts,2,nets:nete) ! true soln
     type (hybrid_t)      , intent(in) :: hybrid
-    real (kind=real_kind)             :: l1     
+    real (kind=r8)             :: l1
 
     ! Local variables
 
-    real (kind=real_kind), dimension(:,:,:,:), pointer :: met
-    real (kind=real_kind) :: dvsq(npts,npts,nets:nete)
-    real (kind=real_kind) :: vtsq(npts,npts,nets:nete)
-    real (kind=real_kind) :: dvco(npts,npts,2)         ! covariant velocity
-    real (kind=real_kind) :: vtco(npts,npts,2)         ! covariant velocity
-    real (kind=real_kind) :: dv1,dv2
-    real (kind=real_kind) :: vt1,vt2
-    real (kind=real_kind) :: dvsq_int
-    real (kind=real_kind) :: vtsq_int
+    real (kind=r8), dimension(:,:,:,:), pointer :: met
+    real (kind=r8) :: dvsq(npts,npts,nets:nete)
+    real (kind=r8) :: vtsq(npts,npts,nets:nete)
+    real (kind=r8) :: dvco(npts,npts,2)         ! covariant velocity
+    real (kind=r8) :: vtco(npts,npts,2)         ! covariant velocity
+    real (kind=r8) :: dv1,dv2
+    real (kind=r8) :: vt1,vt2
+    real (kind=r8) :: dvsq_int
+    real (kind=r8) :: vtsq_int
 
     integer i,j,ie
 
@@ -701,23 +707,22 @@ contains
   ! ===========================================================
 
   function l2_snorm(elem, h,ht,hybrid,npts,nets,nete) result(l2)
-    use kinds, only : real_kind
     use element_mod, only : element_t
     use hybrid_mod, only : hybrid_t
 
-    type(element_t), intent(in) :: elem(:)	
+    type(element_t), intent(in) :: elem(:)
     integer              , intent(in) :: npts,nets,nete
-    real (kind=real_kind), intent(in) :: h(npts,npts,nets:nete)  ! computed soln
-    real (kind=real_kind), intent(in) :: ht(npts,npts,nets:nete) ! true soln
+    real (kind=r8), intent(in) :: h(npts,npts,nets:nete)  ! computed soln
+    real (kind=r8), intent(in) :: ht(npts,npts,nets:nete) ! true soln
     type (hybrid_t)      , intent(in) :: hybrid
-    real (kind=real_kind)             :: l2   
+    real (kind=r8)             :: l2
 
     ! Local variables
 
-    real (kind=real_kind) :: dh2(npts,npts,nets:nete)
-    real (kind=real_kind) :: ht2(npts,npts,nets:nete)
-    real (kind=real_kind) :: dh2_int
-    real (kind=real_kind) :: ht2_int
+    real (kind=r8) :: dh2(npts,npts,nets:nete)
+    real (kind=r8) :: ht2(npts,npts,nets:nete)
+    real (kind=r8) :: dh2_int
+    real (kind=r8) :: ht2_int
     integer i,j,ie
 
     do ie=nets,nete
@@ -745,28 +750,27 @@ contains
   ! ===========================================================
 
   function l2_vnorm(elem, v,vt,hybrid,npts,nets,nete) result(l2)
-    use kinds, only : real_kind
     use element_mod, only : element_t
     use hybrid_mod, only : hybrid_t
 
     type(element_t)      , intent(in), target :: elem(:)
     integer              , intent(in) :: npts,nets,nete
-    real (kind=real_kind), intent(in) :: v(npts,npts,2,nets:nete)  ! computed soln
-    real (kind=real_kind), intent(in) :: vt(npts,npts,2,nets:nete) ! true soln
+    real (kind=r8), intent(in) :: v(npts,npts,2,nets:nete)  ! computed soln
+    real (kind=r8), intent(in) :: vt(npts,npts,2,nets:nete) ! true soln
     type (hybrid_t)      , intent(in) :: hybrid
-    real (kind=real_kind)             :: l2
+    real (kind=r8)             :: l2
 
     ! Local variables
 
-    real (kind=real_kind), dimension(:,:,:,:), pointer :: met
-    real (kind=real_kind) :: dvsq(npts,npts,nets:nete)
-    real (kind=real_kind) :: vtsq(npts,npts,nets:nete)
-    real (kind=real_kind) :: dvco(npts,npts,2)         ! covariant velocity
-    real (kind=real_kind) :: vtco(npts,npts,2)         ! covariant velocity
-    real (kind=real_kind) :: dv1,dv2
-    real (kind=real_kind) :: vt1,vt2
-    real (kind=real_kind) :: dvsq_int
-    real (kind=real_kind) :: vtsq_int
+    real (kind=r8), dimension(:,:,:,:), pointer :: met
+    real (kind=r8) :: dvsq(npts,npts,nets:nete)
+    real (kind=r8) :: vtsq(npts,npts,nets:nete)
+    real (kind=r8) :: dvco(npts,npts,2)         ! covariant velocity
+    real (kind=r8) :: vtco(npts,npts,2)         ! covariant velocity
+    real (kind=r8) :: dv1,dv2
+    real (kind=r8) :: vt1,vt2
+    real (kind=r8) :: dvsq_int
+    real (kind=r8) :: vtsq_int
     integer i,j,ie
 
     do ie=nets,nete
@@ -809,20 +813,19 @@ contains
   ! ===========================================================
 
   function linf_snorm(h,ht,hybrid,npts,nets,nete) result(linf)
-    use kinds, only : real_kind
     use hybrid_mod, only : hybrid_t
     integer              , intent(in) :: npts,nets,nete
-    real (kind=real_kind), intent(in) :: h(npts,npts,nets:nete)  ! computed soln
-    real (kind=real_kind), intent(in) :: ht(npts,npts,nets:nete) ! true soln
+    real (kind=r8), intent(in) :: h(npts,npts,nets:nete)  ! computed soln
+    real (kind=r8), intent(in) :: ht(npts,npts,nets:nete) ! true soln
     type (hybrid_t)      , intent(in) :: hybrid
-    real (kind=real_kind)             :: linf    
+    real (kind=r8)             :: linf
 
     ! Local variables
 
-    real (kind=real_kind) :: dhabs(npts,npts,nets:nete)
-    real (kind=real_kind) :: htabs(npts,npts,nets:nete)
-    real (kind=real_kind) :: dhabs_max
-    real (kind=real_kind) :: htabs_max
+    real (kind=r8) :: dhabs(npts,npts,nets:nete)
+    real (kind=r8) :: htabs(npts,npts,nets:nete)
+    real (kind=r8) :: dhabs_max
+    real (kind=r8) :: htabs_max
     integer i,j,ie
 
     do ie=nets,nete
@@ -851,28 +854,27 @@ contains
   ! ===========================================================
 
   function linf_vnorm(elem,v,vt,hybrid,npts,nets,nete) result(linf)
-    use kinds, only : real_kind
     use hybrid_mod, only : hybrid_t
     use element_mod, only : element_t
 
-    type(element_t)      , intent(in), target :: elem(:) 
+    type(element_t)      , intent(in), target :: elem(:)
     integer              , intent(in) :: npts,nets,nete
-    real (kind=real_kind), intent(in) :: v(npts,npts,2,nets:nete)  ! computed soln
-    real (kind=real_kind), intent(in) :: vt(npts,npts,2,nets:nete) ! true soln
+    real (kind=r8), intent(in) :: v(npts,npts,2,nets:nete)  ! computed soln
+    real (kind=r8), intent(in) :: vt(npts,npts,2,nets:nete) ! true soln
     type (hybrid_t)      , intent(in) :: hybrid
-    real (kind=real_kind)             :: linf     
+    real (kind=r8)             :: linf
 
     ! Local variables
 
-    real (kind=real_kind), dimension(:,:,:,:), pointer :: met
-    real (kind=real_kind) :: dvsq(npts,npts,nets:nete)
-    real (kind=real_kind) :: vtsq(npts,npts,nets:nete)
-    real (kind=real_kind) :: dvco(npts,npts,2)         ! covariant velocity
-    real (kind=real_kind) :: vtco(npts,npts,2)         ! covariant velocity
-    real (kind=real_kind) :: dv1,dv2
-    real (kind=real_kind) :: vt1,vt2
-    real (kind=real_kind) :: dvsq_max
-    real (kind=real_kind) :: vtsq_max
+    real (kind=r8), dimension(:,:,:,:), pointer :: met
+    real (kind=r8) :: dvsq(npts,npts,nets:nete)
+    real (kind=r8) :: vtsq(npts,npts,nets:nete)
+    real (kind=r8) :: dvco(npts,npts,2)         ! covariant velocity
+    real (kind=r8) :: vtco(npts,npts,2)         ! covariant velocity
+    real (kind=r8) :: dv1,dv2
+    real (kind=r8) :: vt1,vt2
+    real (kind=r8) :: dvsq_max
+    real (kind=r8) :: vtsq_max
     integer i,j,ie
 
     do ie=nets,nete
@@ -908,15 +910,10 @@ contains
   end function linf_vnorm
 
   subroutine wrap_repro_sum (nvars, comm, nsize)
-    use dimensions_mod, only: nelemd
-#ifdef CAM
+    use dimensions_mod,   only: nelemd
     use shr_reprosum_mod, only: repro_sum => shr_reprosum_calc
-#else
-    use repro_sum_mod, only: repro_sum
-#endif
-    use parallel_mod, only: global_shared_buf, global_shared_sum, nrepro_vars, abortmp
-
-    implicit none
+    use cam_abortutils,   only: endrun
+    use parallel_mod,     only: global_shared_buf, global_shared_sum, nrepro_vars
 
     integer :: nvars            !  number of variables to be summed (cannot exceed nrepro_vars)
     integer :: comm             !  mpi communicator
@@ -929,21 +926,13 @@ contains
     else
        nsize_use = nelemd
     endif
-    if (nvars .gt. nrepro_vars) call abortmp('ERROR: repro_sum_buffer_size exceeded')
+    if (nvars .gt. nrepro_vars) call endrun('ERROR: repro_sum_buffer_size exceeded')
 
 ! Repro_sum contains its own OpenMP, so only one thread should call it (AAM)
 
-#if (defined HORIZ_OPENMP)
-!$OMP BARRIER
-!$OMP MASTER
-#endif
 
     call repro_sum(global_shared_buf, global_shared_sum, nsize_use, nelemd, nvars, commid=comm)
 
-#if (defined HORIZ_OPENMP)
-!$OMP END MASTER
-!$OMP BARRIER
-#endif
 
     end subroutine wrap_repro_sum
 

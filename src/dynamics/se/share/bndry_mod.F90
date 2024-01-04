@@ -1,7 +1,3 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module bndry_mod
   use parallel_mod, only : abortmp,iam, HME_BNDRY_P2P, HME_BNDRY_MASHM, HME_BNDRY_A2A, HME_BNDRY_A2AO, &
                            HME_BNDRY_GET1, HME_BNDRY_GET2, HME_BNDRY_PUT1, HME_BNDRY_PUT2

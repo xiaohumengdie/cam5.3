@@ -798,7 +798,7 @@ module prim_advection_mod
   use time_mod, only           : TimeLevel_t, smooth, TimeLevel_Qdp
   use prim_si_mod, only        : preq_pressure
   use control_mod, only        : hypervis_order, &
-        statefreq, moisture, TRACERADV_TOTAL_DIVERGENCE, TRACERADV_UGRADQ, &
+        statefreq, moisture, &
         nu_q, nu_p, limiter_option, hypervis_subcycle_q, rsplit
   use edgetype_mod, only       : EdgeBuffer_t
   use edge_mod, only           : edgevpack, edgerotate, edgevunpack, initedgebuffer, initedgesbuffer, edgevunpackmin

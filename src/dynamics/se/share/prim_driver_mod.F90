@@ -26,8 +26,7 @@ contains
     ! --------------------------------
     use thread_mod, only : max_num_threads, omp_get_thread_num, omp_set_num_threads
     ! --------------------------------
-    use control_mod, only : runtype, restartfreq, topology, &
-         partmethod, while_iter
+    use control_mod, only : runtype, topology, partmethod
     ! --------------------------------
     use namelist_mod, only : readnl
     ! --------------------------------
@@ -302,8 +301,6 @@ contains
        elem(ie)%idxV=>elem(ie)%idxP
     end do
 
-    while_iter = 0
-
     ! initialize flux terms to 0
 
     do ie=1,nelemd
@@ -355,9 +352,8 @@ contains
 
     use parallel_mod, only : parallel_t, haltmp, syncmp, abortmp
     use time_mod, only : timelevel_t, tstep, phys_tscale, timelevel_init, nendstep, smooth, nsplit, TimeLevel_Qdp
-    use control_mod, only : runtype, vfile_int,vform, vfile_mid, &
+    use control_mod, only : runtype, &
          topology,columnpackage, moisture, rsplit, qsplit, rk_stage_user,&
-         sub_case, &
          limiter_option, nu, nu_q, nu_div, tstep_type, hypervis_subcycle, &
          hypervis_subcycle_q
     use control_mod, only : tracer_transport_type

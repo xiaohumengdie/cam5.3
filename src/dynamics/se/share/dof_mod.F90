@@ -1,24 +1,19 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module dof_mod
-  use kinds, only : real_kind,int_kind,long_kind
-  use dimensions_mod, only : np, npsq, nelem, nelemd
-  use quadrature_mod, only : quadrature_t
-  use element_mod, only : element_t,index_t
-  use parallel_mod, only : parallel_t, mpiinteger_t
-  use edge_mod, only : initEdgebuffer,freeEdgebuffer, &
-		       longedgevpack, longedgevunpackmin
-  use edgetype_mod, only : longedgebuffer_t
-  use bndry_mod, only : bndry_exchangev
+  use shr_kind_mod,   only: r8=>shr_kind_r8, i8=>shr_kind_i8
+  use dimensions_mod, only: np, npsq, nelem, nelemd
+  use quadrature_mod, only: quadrature_t
+  use element_mod,    only: element_t,index_t
+  use spmd_utils,     only: mpi_integer
+  use parallel_mod,   only: parallel_t
+  use edge_mod,       only: initedgebuffer,freeedgebuffer,            &
+               longedgevpack, longedgevunpackmin
+  use edgetype_mod,   only: longedgebuffer_t
+  use bndry_mod,      only: bndry_exchangev
 implicit none
 private
   ! public data
   ! public subroutines
   public :: global_dof
-  public :: genLocalDof
-  public :: PrintDofP
   public :: UniquePoints
   public :: PutUniquePoints
   public :: UniqueNcolsP
@@ -43,13 +38,13 @@ contains
 
   subroutine genLocalDof(ig,npts,ldof)
 
-    integer(kind=int_kind), intent(in) :: ig
-    integer(kind=int_kind), intent(in) :: npts
-    integer(kind=int_kind), intent(inout) :: ldof(:,:)
+    integer, intent(in) :: ig
+    integer, intent(in) :: npts
+    integer, intent(inout) :: ldof(:,:)
 
-    integer(kind=int_kind) :: i,j,npts2
-  
-   
+    integer :: i,j,npts2
+
+
      npts2=npts*npts
      do j=1,npts
        do i=1,npts
@@ -72,11 +67,11 @@ contains
 
     type (LongEdgeBuffer_t)    :: edge
 
-    real(kind=real_kind)  da                     ! area element
+    real(kind=r8)  da                     ! area element
 
     type (quadrature_t) :: gp
 
-    integer (kind=int_kind) :: ldofP(np,np,nelemd)
+    integer :: ldofP(np,np,nelemd)
 
     integer ii
     integer i,j,ig,ie
@@ -90,13 +85,13 @@ contains
 
     ! =================================================
     ! mass matrix on the velocity grid
-    ! =================================================    
+    ! =================================================
 
- 
+
     do ie=1,nelemd
        ig = elem(ie)%vertex%number
        call genLocalDOF(ig,np,ldofP(:,:,ie))
-	 
+
        kptr=0
        call LongEdgeVpack(edge,ldofP(:,:,ie),1,kptr,elem(ie)%desc)
     end do
@@ -109,24 +104,24 @@ contains
 
     do ie=1,nelemd
        ! we should unpack directly into elem(ie)%gdofV, but we dont have
-       ! a VunpackMIN that takes integer*8.  gdofV integer*8 means  
+       ! a VunpackMIN that takes integer*8.  gdofV integer*8 means
        ! more than 2G grid points.
        kptr=0
        call LongEdgeVunpackMIN(edge,ldofP(:,:,ie),1,kptr,elem(ie)%desc)
        elem(ie)%gdofP(:,:)=ldofP(:,:,ie)
     end do
     call FreeEdgeBuffer(edge)
-       
+
   end subroutine global_dof
 
 
   subroutine UniquePoints2D(idxUnique,src,dest)
     type (index_t) :: idxUnique
-    real (kind=real_kind) :: src(:,:)
-    real (kind=real_kind) :: dest(:)
+    real (kind=r8) :: src(:,:)
+    real (kind=r8) :: dest(:)
 
-    integer(kind=int_kind) :: i,j,ii
-    
+    integer :: i,j,ii
+
 
     do ii=1,idxUnique%NumUniquePts
        i=idxUnique%ia(ii)
@@ -136,17 +131,17 @@ contains
 
   end subroutine UniquePoints2D
 
-! putUniquePoints first zeros out the destination array, then fills the unique points of the 
-! array with values from src.  A boundary communication should then be called to fill in the 
+! putUniquePoints first zeros out the destination array, then fills the unique points of the
+! array with values from src.  A boundary communication should then be called to fill in the
 ! redundent points of the array
 
   subroutine putUniquePoints2D(idxUnique,src,dest)
     type (index_t) :: idxUnique
-    real (kind=real_kind),intent(in) :: src(:)
-    real (kind=real_kind),intent(out) :: dest(:,:)
+    real (kind=r8),intent(in) :: src(:)
+    real (kind=r8),intent(out) :: dest(:,:)
 
-    integer(kind=int_kind) :: i,j,ii
-    
+    integer :: i,j,ii
+
     dest=0.0D0
     do ii=1,idxUnique%NumUniquePts
        i=idxUnique%ia(ii)
@@ -156,12 +151,12 @@ contains
 
   end subroutine putUniquePoints2D
 
-  subroutine UniqueNcolsP(elem,idxUnique,cid)    
+  subroutine UniqueNcolsP(elem,idxUnique,cid)
     use element_mod, only : GetColumnIdP, element_t
     type (element_t), intent(in) :: elem
     type (index_t), intent(in) :: idxUnique
     integer,intent(out) :: cid(:)
-    integer(kind=int_kind) :: i,j,ii
+    integer :: i,j,ii
 
 
     do ii=1,idxUnique%NumUniquePts
@@ -169,7 +164,7 @@ contains
        j=idxUnique%ja(ii)
        cid(ii)=GetColumnIdP(elem,i,j)
     enddo
-    
+
   end subroutine UniqueNcolsP
 
 
@@ -179,10 +174,10 @@ contains
     type (index_t), intent(in) :: idxUnique
 
     type (spherical_polar_t) :: src(:,:)
-    real (kind=real_kind), intent(out) :: lat(:)
-    real (kind=real_kind), intent(out) :: lon(:)
+    real (kind=r8), intent(out) :: lat(:)
+    real (kind=r8), intent(out) :: lon(:)
 
-    integer(kind=int_kind) :: i,j,ii
+    integer :: i,j,ii
 
     do ii=1,idxUnique%NumUniquePts
        i=idxUnique%ia(ii)
@@ -195,11 +190,11 @@ contains
 
   subroutine UniquePoints3D(idxUnique,nlyr,src,dest)
     type (index_t) :: idxUnique
-    integer(kind=int_kind) :: nlyr
-    real (kind=real_kind) :: src(:,:,:)
-    real (kind=real_kind) :: dest(:,:)
-    
-    integer(kind=int_kind) :: i,j,k,ii
+    integer :: nlyr
+    real (kind=r8) :: src(:,:,:)
+    real (kind=r8) :: dest(:,:)
+
+    integer :: i,j,k,ii
 
     do ii=1,idxUnique%NumUniquePts
        i=idxUnique%ia(ii)
@@ -212,11 +207,11 @@ contains
   end subroutine UniquePoints3D
   subroutine UniquePoints4D(idxUnique,d3,d4,src,dest)
     type (index_t) :: idxUnique
-    integer(kind=int_kind) :: d3,d4
-    real (kind=real_kind) :: src(:,:,:,:)
-    real (kind=real_kind) :: dest(:,:,:)
-    
-    integer(kind=int_kind) :: i,j,k,n,ii
+    integer :: d3,d4
+    real (kind=r8) :: src(:,:,:,:)
+    real (kind=r8) :: dest(:,:,:)
+
+    integer :: i,j,k,n,ii
 
     do n=1,d4
        do k=1,d3
@@ -230,17 +225,17 @@ contains
 
   end subroutine UniquePoints4D
 
-! putUniquePoints first zeros out the destination array, then fills the unique points of the 
-! array with values from src.  A boundary communication should then be called to fill in the 
+! putUniquePoints first zeros out the destination array, then fills the unique points of the
+! array with values from src.  A boundary communication should then be called to fill in the
 ! redundent points of the array
 
   subroutine putUniquePoints3D(idxUnique,nlyr,src,dest)
     type (index_t) :: idxUnique
-    integer(kind=int_kind) :: nlyr
-    real (kind=real_kind),intent(in) :: src(:,:)
-    real (kind=real_kind),intent(out) :: dest(:,:,:)
-    
-    integer(kind=int_kind) :: i,j,k,ii
+    integer :: nlyr
+    real (kind=r8),intent(in) :: src(:,:)
+    real (kind=r8),intent(out) :: dest(:,:,:)
+
+    integer :: i,j,k,ii
 
     dest=0.0D0
     do k=1,nlyr
@@ -255,11 +250,11 @@ contains
 
   subroutine putUniquePoints4D(idxUnique,d3,d4,src,dest)
     type (index_t) :: idxUnique
-    integer(kind=int_kind) :: d3,d4
-    real (kind=real_kind),intent(in) :: src(:,:,:)
-    real (kind=real_kind),intent(out) :: dest(:,:,:,:)
-    
-    integer(kind=int_kind) :: i,j,k,n,ii
+    integer :: d3,d4
+    real (kind=r8),intent(in) :: src(:,:,:)
+    real (kind=r8),intent(out) :: dest(:,:,:,:)
+
+    integer :: i,j,k,n,ii
 
     dest=0.0D0
     do n=1,d4
@@ -274,58 +269,52 @@ contains
   end subroutine putUniquePoints4D
 
   subroutine SetElemOffset(par,elem,GlobalUniqueColsP)
-#ifdef _MPI
-     use parallel_mod, only : mpi_sum
-#endif
-     type (parallel_t) :: par
-     type (element_t) :: elem(:)
-     integer, intent(out) :: GlobalUniqueColsP
+    use spmd_utils, only : mpi_sum
 
-     integer(kind=int_kind), allocatable :: numElemP(:),numElem2P(:)
-     integer(kind=int_kind), allocatable :: numElemV(:),numElem2V(:)
-     integer(kind=int_kind), allocatable :: gOffset(:)
-    
-     integer(kind=int_kind) :: ie,ig,nprocs,ierr
+    type (parallel_t)    :: par
+    type (element_t)     :: elem(:)
+    integer, intent(out) :: GlobalUniqueColsP
 
-     logical,parameter :: Debug = .FALSE.
+    integer, allocatable :: numElemP(:),numElem2P(:)
+    integer, allocatable :: numElemV(:),numElem2V(:)
+    integer, allocatable :: gOffset(:)
 
-     nprocs = par%nprocs
-     allocate(numElemP(nelem))
-     allocate(numElem2P(nelem))
-     allocate(gOffset(nelem))
-     numElemP=0;numElem2P=0;gOffset=0
+    integer            :: ie, ig, nprocs, ierr
+    logical, parameter :: Debug = .FALSE.
 
-     do ie=1,nelemd
-	ig = elem(ie)%GlobalId
-	numElemP(ig) = elem(ie)%idxP%NumUniquePts
-     enddo
-#ifdef _MPI
-     call MPI_Allreduce(numElemP,numElem2P,nelem,MPIinteger_t,MPI_SUM,par%comm,ierr) 
-#else
-     numElem2P=numElemP
-#endif
+    nprocs = par%nprocs
+    allocate(numElemP(nelem))
+    allocate(numElem2P(nelem))
+    allocate(gOffset(nelem))
+    numElemP=0;numElem2P=0;gOffset=0
 
-     gOffset(1)=1
-     do ig=2,nelem
-	gOffset(ig) = gOffset(ig-1)+numElem2P(ig-1)
-     enddo
-     do ie=1,nelemd
-        ig = elem(ie)%GlobalId
-        elem(ie)%idxP%UniquePtOffset=gOffset(ig)
-     enddo
-     GlobalUniqueColsP = gOffset(nelem)+numElem2P(nelem)-1
+    do ie = 1, nelemd
+      ig = elem(ie)%GlobalId
+      numElemP(ig) = elem(ie)%idxP%NumUniquePts
+    end do
+    call MPI_Allreduce(numElemP,numElem2P,nelem,MPI_INTEGER,MPI_SUM,par%comm,ierr)
 
-     deallocate(numElemP)
-     deallocate(numElem2P)
-     deallocate(gOffset)
+    gOffset(1)=1
+    do ig = 2, nelem
+      gOffset(ig) = gOffset(ig-1)+numElem2P(ig-1)
+    end do
+    do ie = 1, nelemd
+      ig = elem(ie)%GlobalId
+      elem(ie)%idxP%UniquePtOffset=gOffset(ig)
+    end do
+    GlobalUniqueColsP = gOffset(nelem)+numElem2P(nelem)-1
+
+    deallocate(numElemP)
+    deallocate(numElem2P)
+    deallocate(gOffset)
   end subroutine SetElemOffset
 
   subroutine CreateUniqueIndex(ig,gdof,idx)
 
-    integer(kind=int_kind) :: ig
-    type (index_t) :: idx 
-    integer(kind=long_kind) :: gdof(:,:)
-    
+    integer :: ig
+    type (index_t) :: idx
+    integer(i8) :: gdof(:,:)
+
     integer, allocatable :: ldof(:,:)
     integer :: i,j,ii,npts
 
@@ -336,9 +325,9 @@ contains
     ! Form the local DOF
     ! ====================
     call genLocalDOF(ig,npts,ldof)
-    
+
     ii=1
-    
+
     do j=1,npts
        do i=1,npts
           ! ==========================
@@ -351,7 +340,7 @@ contains
           endif
        enddo
     enddo
-    
+
     idx%NumUniquePts=ii-1
     deallocate(ldof)
 
@@ -359,27 +348,27 @@ contains
 
 
   subroutine CreateMetaData(par,elem,subelement_corners, fdofp)
-    type (parallel_t),intent(in) :: par
-    type (element_t), target    :: elem(:)
+    type (parallel_t),          intent(in)  :: par
+    type (element_t), target                :: elem(:)
 
-    integer, intent(out),optional         :: subelement_corners((np-1)*(np-1)*nelemd,4)
-    integer(kind=int_kind), optional :: fdofp(np,np,nelemd)
+    integer,          optional, intent(out) :: subelement_corners((np-1)*(np-1)*nelemd,4)
+    integer,          optional              :: fdofp(np,np,nelemd)
 
-    type (index_t), pointer  :: idx 
-    type (LongEdgeBuffer_t)    :: edge
-    integer :: i, j, ii, ie, base
-    integer(kind=long_kind), pointer :: gdof(:,:)
-    integer :: fdofp_local(np,np,nelemd)
+    type (index_t),   pointer               :: idx
+    type (LongEdgeBuffer_t)                 :: edge
+    integer                                 :: i, j, ii, ie, base
+    integer(i8),      pointer               :: gdof(:,:)
+    integer                                 :: fdofp_local(np,np,nelemd)
 
     call initEdgeBuffer(edge,1)
     fdofp_local=0
-    
+
     do ie=1,nelemd
        idx => elem(ie)%idxP
        do ii=1,idx%NumUniquePts
           i=idx%ia(ii)
           j=idx%ja(ii)
-          
+
           fdofp_local(i,j,ie) = -(idx%UniquePtoffset+ii-1)
        end do
        call LongEdgeVpack(edge,fdofp_local(:,:,ie),1,0,elem(ie)%desc)
@@ -389,7 +378,7 @@ contains
        base = (ie-1)*(np-1)*(np-1)
        call LongEdgeVunpackMIN(edge,fdofp_local(:,:,ie),1,0,elem(ie)%desc)
        if(present(subelement_corners)) then
-          ii=0       
+          ii=0
           do j=1,np-1
              do i=1,np-1
                 ii=ii+1
@@ -404,36 +393,9 @@ contains
     if(present(fdofp)) then
        fdofp=-fdofp_local
     end if
-    
+
 
 
   end subroutine CreateMetaData
 
-
-! ==========================================
-!  PrintDofP
-!
-!   Prints the degree of freedom 
-! ==========================================
-  subroutine PrintDofP(elem)
-
-   implicit none
-   type (element_t), intent(in) :: elem(:)
-
-   integer :: ie,nse,i,j
-   
-
-   nse = SIZE(elem)
- 
-   do ie=1,nse
-      print *,'Element # ',elem(ie)%vertex%number
-      do j=np,1,-1
-         write(6,*) (elem(ie)%gdofP(i,j), i=1,np)
-      enddo
-   enddo
- 10 format('I5')
-
- end subroutine PrintDofP
-
 end module dof_mod
-

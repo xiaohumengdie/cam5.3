@@ -1,7 +1,3 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module cube_mod
   use shr_kind_mod,           only: r8=>shr_kind_r8
   use coordinate_systems_mod, only: spherical_polar_t, cartesian3D_t, cartesian2d_t, &
