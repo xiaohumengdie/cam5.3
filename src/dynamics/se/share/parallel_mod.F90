@@ -5,7 +5,6 @@ module parallel_mod
   use dimensions_mod, only : nmpi_per_node, nlev, qsize_d
   ! ---------------------------
   use spmd_utils,     only: MPI_STATUS_SIZE, MPI_MAX_ERROR_STRING, MPI_TAG_UB
-  use cam_logfile,  only: iulog
 
   implicit none
   private
@@ -32,9 +31,6 @@ module parallel_mod
   integer,  public              :: useframes
   logical,  public              :: PartitionForNodes
   logical,  public              :: PartitionForFrames
-  integer,  public              :: MPIreal_t,MPIinteger_t,MPIChar_t,MPILogical_t
-  integer,  public              :: MPIaddr_kind
-  integer,  public              :: iam
 
   ! Namelist-selectable type of boundary comms (AUTO,P2P,A2A,MASHM)
   integer,  public              :: boundaryCommMethod
@@ -55,21 +51,15 @@ module parallel_mod
   ! ==================================================
   ! Define type parallel_t for distributed memory info
   ! ==================================================
-
-  integer, parameter :: ncomponents=1
-
   type, public :: parallel_t
     integer :: rank                       ! local rank
     integer :: root                       ! local root
     integer :: nprocs                     ! number of processes in group
     integer :: comm                       ! communicator
-    integer :: intercomm                  ! inter communicator list
-    integer :: intracomm                  ! intra node communicator
-    integer :: intracommsize              ! number of MPI ranks in intra communicator
-    integer :: intracommrank              ! rank in intra communicator
-    integer :: commGraphFull
-    integer :: commGraphInter
-    integer :: commGraphIntra
+    integer :: intracomm                  ! Intra-node communicator
+    integer :: commGraphFull              ! distributed graph topo communicator for all neighbors
+    integer :: commGraphInter             ! distributed graph topo communicator for off-node neighbors
+    integer :: commGraphIntra             ! distributed graph topo communicator for on-node neighbors
     integer :: groupGraphFull
     logical :: masterproc
   end type
@@ -105,7 +95,7 @@ CONTAINS
     par2%root       = par1%root
     par2%nprocs     = par1%nprocs
     par2%comm       = par1%comm
-    par2%intercomm  = par1%intercomm
+    par2%intracomm  = par1%intracomm
     par2%commGraphFull   = par1%commGraphFull
     par2%commGraphInter  = par1%commGraphInter
     par2%commGraphIntra  = par1%commGraphIntra
@@ -120,18 +110,15 @@ CONTAINS
 !  environment, returns a parallel_t structure..
 ! ================================================
 
-  function initmpi(npes_in) result(par)
-    use spmd_utils, only : mpicom
-    integer, intent(in), optional ::  npes_in
-    type (parallel_t) par
+  function initmpi(npes_homme) result(par)
+    use cam_logfile,    only: iulog
+    use cam_abortutils, only: endrun
+    use spmd_utils,     only: mpicom, MPI_COMM_NULL, MPI_MAX_PROCESSOR_NAME
+    use spmd_utils,     only: MPI_CHARACTER, MPI_INTEGER, MPI_BAND, iam, npes
 
-#ifdef _MPI
+    integer, intent(in) :: npes_homme
 
-#include <mpif.h>
-#ifdef _AIX
-    integer                              :: ii         
-    character(len=2)                                    :: cfn
-#endif
+    type(parallel_t)     :: par
 
     integer              :: ierr,tmp
     integer              :: FrameNumber
@@ -142,8 +129,7 @@ CONTAINS
     integer, allocatable :: tarray(:)
     integer              :: namelen, i
     integer              :: color
-    integer :: iam_cam, npes_cam
-    integer :: npes_homme
+
     !================================================
     !     Basic MPI initialization
     ! ================================================
@@ -151,167 +137,88 @@ CONTAINS
     call MPI_initialized(running, ierr)
 
     if (.not.running) then
-       call MPI_init(ierr)
+      call endrun('initmpi: MPI not initialized for SE dycore')
     end if
 
     par%root          = 0
-    par%intercomm = 0
-    
-#ifdef CAM
-    if(present(npes_in)) then
-       npes_homme=npes_in
+    par%masterproc    = .FALSE.
+    nmpi_per_node     = 2
+    PartitionForNodes = .TRUE.
+
+    ! The SE dycore needs to split from CAM communicator for npes > par%nprocs
+    color = iam / npes_homme
+    call mpi_comm_split(mpicom, color, iam, par%comm, ierr)
+    if (iam < npes_homme) then
+      call MPI_comm_size(par%comm, par%nprocs, ierr)
+      call MPI_comm_rank(par%comm, par%rank,  ierr)
+      if ( par%nprocs /= npes_homme) then
+        call endrun('INITMPI: SE communicator count mismatch')
+      end if
+
+      if(par%rank == par%root) then
+        par%masterproc = .TRUE.
+      end if
     else
-       npes_homme=npes_cam
+      par%rank   = 0
+      par%nprocs = 0
+      par%comm   = MPI_COMM_NULL
     end if
-    call MPI_comm_size(mpicom,npes_cam,ierr)
-    call MPI_comm_rank(mpicom,iam_cam,ierr)
-    color = iam_cam/npes_homme
-    call mpi_comm_split(mpicom, color, iam_cam, par%comm, ierr)
-#else
-    par%comm     = MPI_COMM_WORLD
-#endif
-    call MPI_comm_rank(par%comm,par%rank,ierr)
-    call MPI_comm_size(par%comm,par%nprocs,ierr)
 
-    par%masterproc = .FALSE.
-    if(par%rank .eq. par%root) par%masterproc = .TRUE.
-    if (par%masterproc) write(iulog,*)'number of MPI processes: ',par%nprocs
-           
-    if (MPI_DOUBLE_PRECISION==20 .and. MPI_REAL8==18) then
-       ! LAM MPI defined MPI_REAL8 differently from MPI_DOUBLE_PRECISION
-       ! and LAM MPI's allreduce does not accept on MPI_REAL8
-       MPIreal_t    = MPI_DOUBLE_PRECISION
-    else
-       MPIreal_t    = MPI_REAL8
-    endif
-    MPIinteger_t = MPI_INTEGER
-    MPIchar_t    = MPI_CHARACTER 
-    MPILogical_t = MPI_LOGICAL
-    MPIaddr_kind = MPI_ADDRESS_KIND
+    if (par%masterproc) then
+      write(iulog, '(a,i0)')'initmpi: Number of MPI processes: ', par%nprocs
+    end if
 
-    ! ================================================ 
-    !  Determine where this MPI process is running 
-    !   then use this information to determined the 
-    !   number of MPI processes per node    
-    ! ================================================ 
+    if (iam < npes_homme) then
+      ! ================================================
+      !  Determine where this MPI process is running
+      !   then use this information to determined the
+      !   number of MPI processes per node
+      ! ================================================
+      my_name(:) = ''
+      call MPI_Get_Processor_Name(my_name, namelen, ierr)
 
-    my_name(:) = ''
-    call MPI_Get_Processor_Name(my_name,namelen,ierr)
+      allocate(the_names(par%nprocs))
+      do i = 1, par%nprocs
+        the_names(i)(:) =  ''
+      end do
 
-    allocate(the_names(par%nprocs))
-    do i=1,par%nprocs
-       the_names(i)(:) =  ''
-    enddo
-    ! ================================================ 
-    !   Collect all the machine names 
-    ! ================================================ 
-    call MPI_Allgather(my_name,MPI_MAX_PROCESSOR_NAME,MPI_CHARACTER, &
+      ! ================================================
+      !   Collect all the machine names
+      ! ================================================
+      call MPI_Allgather(my_name, MPI_MAX_PROCESSOR_NAME, MPI_CHARACTER, &
            the_names,MPI_MAX_PROCESSOR_NAME,MPI_CHARACTER,par%comm,ierr)
 
-    ! ======================================================================
-    !   Calculate how many other MPI processes are on my node 
-    ! ======================================================================
-    nmpi_per_node = 0
-    do i=1,par%nprocs
-      if( TRIM(ADJUSTL(my_name)) .eq. TRIM(ADJUSTL(the_names(i)))   ) then 
-        nmpi_per_node = nmpi_per_node + 1
-      endif
-    enddo
+      ! ======================================================================
+      !   Calculate how many other MPI processes are on my node
+      ! ======================================================================
+      nmpi_per_node = 0
+      do i = 1, par%nprocs
+        if(TRIM(ADJUSTL(my_name)) .eq. TRIM(ADJUSTL(the_names(i)))) then
+          nmpi_per_node = nmpi_per_node + 1
+        end if
+      end do
 
-    ! =======================================================================
-    !  Verify that everybody agrees on this number otherwise do not do 
-    !  the multi-level partitioning
-    ! =======================================================================
-    call MPI_Allreduce(nmpi_per_node,tmp,1,MPIinteger_t,MPI_BAND,par%comm,ierr)
-    if(tmp .ne. nmpi_per_node) then 
-      if (par%masterproc) write(iulog,*)'initmpi:  disagrement accross nodes for nmpi_per_node'
-      nmpi_per_node = 1
-      PartitionForNodes=.FALSE.
-    else
-      PartitionForNodes=.TRUE.
-    endif
+      ! =======================================================================
+      !  Verify that everybody agrees on this number otherwise do not do
+      !  the multi-level partitioning
+      ! =======================================================================
+      call MPI_Allreduce(nmpi_per_node,tmp,1,MPI_INTEGER,MPI_BAND,par%comm,ierr)
+      if(tmp /= nmpi_per_node) then
+        if (par%masterproc) then
+          write(iulog,*)'initmpi:  disagrement accross nodes for nmpi_per_node'
+        end if
+        nmpi_per_node = 1
+        PartitionForNodes = .FALSE.
+      else
+        PartitionForNodes = .TRUE.
+      end if
 
+      if(PartitionForFrames .and. par%masterproc) then
+        write(iulog,*)'initmpi: FrameWeight: ', FrameWeight
+      end if
 
-#ifdef _AIX
-    PartitionForFrames=.FALSE.
-    if((my_name(1:2) .eq. 'bv') .or.  &   ! Bluvista
-       (my_name(1:2) .eq. 'bl') .or.  &    ! Blueice
-       (my_name(1:2) .eq. 'bh') .or.  &    ! Blue Horizon
-       (my_name(1:2) .eq. 'bs') .or.  &    ! BlueSky
-       (my_name(1:2) .eq. 's0')       &    ! Seaborg
-      ) then
-
-       ! ================================================================================
-       ! Note: the frame based optimization is only supported on blackforest or babyblue
-       ! ================================================================================
-       cfn = my_name(3:4)
-       read(cfn,'(i2)') FrameNumber
-
-       ! ======================================================
-       ! Make sure that the system does not have too may frames 
-       ! ======================================================
-       call MPI_Allreduce(FrameNumber,MaxNumberFrames,1,MPIinteger_t,MPI_MAX,par%comm,ierr)
-       MaxNumberFrames=MaxNumberFrames+1
-       allocate(FrameCount(MaxNumberFrames))
-       allocate(tarray(MaxNumberFrames))
-
-       call MPI_Allreduce(useframes,tmp,1,MPIinteger_t,MPI_BAND,par%comm,ierr)
-       if(tmp .ne. useframes) then 
-          if (par%masterpoc) write(iulog,*) "initmpi:  disagreement accross nodes for useframes"
-          PartitionForFrames=.FALSE.
-       endif
-
-       if(PartitionForFrames) then 
-         tarray(:) = 0
-         tarray(FrameNumber+1) = 1
-         call MPI_Allreduce(tarray,FrameCount,MaxNumberFrames,MPIinteger_t,MPI_SUM,par%comm,ierr)
-         if(par%masterproc)  write(iulog,*)'initmpi: FrameCount : ',FrameCount
-           numFrames = COUNT(FrameCount .ne. 0)
-           allocate(FrameWeight(numFrames))
-           allocate(FrameIndex(numFrames))
-
-         ii=1
-         do i=1,MaxNumberFrames
-           if(FrameCount(i) .ne. 0) then 
-             FrameWeight(ii) = real(FrameCount(i),kind=4)/real(par%nprocs,kind=4)
-             FrameIndex(ii)  = i
-             ii=ii+1
-           endif
-         enddo
-       endif
-
-      FrameCount(:)=FrameCount(:)/nmpi_per_node
-      ! ==========================================
-      ! We are not running on more than one frame 
-      ! ==========================================
-      if(numFrames .eq. 1)  PartitionForFrames=.FALSE.
-
-    endif
-
-    write(iulog,*) 'initmpi: mpi task ',par%rank,': ',nmpi_per_node,' task(s) on node ',my_name(1:namelen),  &
-                   'on frame # ',FrameNumber 
-#endif
-    if(PartitionForFrames) then 
-      if(par%masterproc) write(iulog,*)'initmpi: FrameWeight: ',FrameWeight
-      if(par%masterproc) write(iulog,*)'initmpi: FrameIndex: ',FrameIndex
-    endif
-
-    deallocate(the_names)
- 
-#else
-    par%root          =  0 
-    par%rank          =  0
-    par%nprocs        =  1
-    par%comm          = -1
-    par%intercomm     = -1
-    par%masterproc    = .TRUE.
-    nmpi_per_node     =  2
-    PartitionForNodes = .TRUE.
-#endif
-    !===================================================
-    !  Kind of lame but set this variable to be 1 based 
-    !===================================================
-    iam = par%rank+1
+      deallocate(the_names)
+    end if
 
   end function initmpi
 

@@ -58,7 +58,7 @@ contains
     ! --------------------------------
     use prim_advance_mod, only: prim_advance_init
     ! --------------------------------
-    use parallel_mod, only : iam, parallel_t, syncmp, global_shared_buf, nrepro_vars
+    use parallel_mod, only : parallel_t, syncmp, global_shared_buf, nrepro_vars
     use spmd_utils,             only: mpi_integer, mpi_max
     ! --------------------------------
     use spacecurve_mod, only : genspacepart
@@ -174,7 +174,7 @@ contains
     ! ====================================================
     !  Generate the communication graph
     ! ====================================================
-    call initMetaGraph(iam,MetaVertex(1),GridVertex,GridEdge)
+    call initMetaGraph(par%rank+1,MetaVertex(1),GridVertex,GridEdge)
 
 
     nelemd = LocalElemCount(MetaVertex(1))
@@ -199,7 +199,7 @@ contains
     !  Generate the communication schedule
     ! ====================================================
 
-    call genEdgeSched(par,elem,iam,Schedule(1),MetaVertex(1))
+    call genEdgeSched(par,elem,par%rank+1,Schedule(1),MetaVertex(1))
 
 
     allocate(global_shared_buf(nelemd,nrepro_vars))

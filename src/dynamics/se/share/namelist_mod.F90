@@ -1,11 +1,14 @@
 module namelist_mod
   !-----------------
-  use kinds, only : real_kind, iulog
+  use cam_logfile,    only: iulog
   !-----------------
-  use params_mod, only : recursive, sfcurve
+  use params_mod,     only: recursive, sfcurve
   !-----------------
   use cube_mod, only : rotate_grid
-  use control_mod, only : &
+  use shr_kind_mod,   only: r8=>shr_kind_r8
+  use spmd_utils,     only: mpi_integer, mpi_real8, mpi_character, mpi_logical
+  !-----------------
+  use control_mod,    only:   &
        MAX_STRING_LEN,&
        MAX_FILE_LEN,  &
        partmethod,    &       ! Mesh partitioning method (METIS)
@@ -56,29 +59,30 @@ module namelist_mod
   !-----------------
   use time_mod, only : nsplit, smooth, phys_tscale
   !-----------------
-  use parallel_mod, only : parallel_t,  iam, &
-       partitionfornodes, useframes, mpireal_t, mpilogical_t, mpiinteger_t, mpichar_t
+  use cam_abortutils, only: endrun
+  use parallel_mod,   only: parallel_t, partitionfornodes, useframes
   !-----------------
 
   use interpolate_mod, only : vector_uvars, vector_vvars, max_vecvars, interpolate_analysis, replace_vec_by_vordiv
   use interpolate_mod, only : set_interp_parameter, get_interp_parameter
-  use cam_abortutils,         only: endrun
 
-!=======================================================================================================!
+!=============================================================================!
   implicit none
   private
 !
-! This module should contain no global data and should only be 'use'd where readnl is called
+! This module should contain no global data and should only be 'use'd to
+!    call one of the public interfaces below
 !
   public :: readnl
 
  contains
-! ============================================
-! readnl:
-!
-!  Read in the namelists...
-!
-! ============================================
+
+  ! ============================================
+  ! readnl:
+  !
+  !  Read in the namelists...
+  !
+  ! ============================================
   subroutine readnl(par, NLFileName)
     use units, only : getunit, freeunit
     use mesh_mod, only : MeshOpen
@@ -91,7 +95,7 @@ module namelist_mod
     integer :: i, ii, j
     integer  :: ierr
     character(len=80) :: errstr, arg
-    real(kind=real_kind) :: dt_max
+    real(kind=r8) :: dt_max
     character(len=MAX_STRING_LEN) :: se_topology
     integer :: se_partmethod
     integer :: se_ne
@@ -205,12 +209,10 @@ module namelist_mod
     ! Read namelist variables
     ! =======================
 
-!   write(iulog,*) "masterproc=",par%masterproc
 
     if (par%masterproc) then
 
        write(iulog,*)"reading ctl namelist..."
-#if defined(CAM)
        unitn=getunit()
        open( unitn, file=trim(nlfilename), status='old' )
        ierr = 1
@@ -224,13 +226,6 @@ module namelist_mod
        end do
        close( unitn )
        call freeunit( unitn )
-#elif defined(OSF1) || defined(_BGL) || defined(_NAMELIST_FROM_FILE)
-       open(unit=7,file="input.nl",status="OLD")
-       read(unit=7,nml=ctl_nl)
-#else
-      print *, 'Reading namelist ctl_nl from standard input'
-      read(*,nml=ctl_nl)
-#endif
 #ifndef _USEMETIS
       !=================================
       ! override the selected partition
@@ -258,7 +253,6 @@ module namelist_mod
             'V850    ','FV      ','CONVV   ','DIFFV   ','VTGWORO ','VFLX    '/)
 
        write(iulog,*)"reading analysis namelist..."
-#if defined(CAM)
        unitn=getunit()
        open( unitn, file=trim(nlfilename), status='old' )
        ierr = 1
@@ -271,59 +265,6 @@ module namelist_mod
        end do
        close( unitn )
        call freeunit( unitn )
-#else
-#if defined(OSF1) || defined(_BGL) || defined(_NAMELIST_FROM_FILE)
-       read(unit=7,nml=analysis_nl)
-#else
-       read(*,nml=analysis_nl)
-#endif
-
-      if (io_stride .eq.0 .and. num_io_procs .eq.0) then
-         ! user did not set anything
-         io_stride=1
-         num_io_procs = par%nprocs
-      else if (io_stride.eq.0) then  ! user set num_io_procs
-         io_stride = max(1,par%nprocs/num_io_procs)
-      else if (num_io_procs .eq. 0) then   ! user set io_stride
-         num_io_procs=max(1,par%nprocs/io_stride)
-      else ! user set both parameters
-      endif
-      ! sanity check
-      if(num_io_procs*io_stride>par%nprocs) then
-         if (io_stride > par%nprocs) io_stride=par%nprocs
-         num_io_procs=par%nprocs/io_stride
-      end if
-
-      if(output_varnames1(1).eq.'     ') then
-         if( runtype>=0) then
-            call setvarnames(output_varnames1)
-         else ! interpolation mode
-            output_varnames1='all'
-         end if
-      end if
-       do i=1,max_output_streams
-          if(output_frequency(i)>0 .and. output_end_time(i)==0) output_end_time(i)=-1
-          if(output_timeunits(i).eq.1) then  ! per_day
-             output_frequency(i) = output_frequency(i)*(secpday/tstep)
-             output_start_time(i)= output_start_time(i)*(secpday/tstep)
-             output_end_time(i)  = output_end_time(i)*(secpday/tstep)
-          else if(output_timeunits(i).eq.2) then  ! per_hour
-             output_frequency(i) = output_frequency(i)*(secphr/tstep)
-             output_start_time(i)= output_start_time(i)*(secphr/tstep)
-             output_end_time(i)  = output_end_time(i)*(secphr/tstep)
-          end if
-          if(output_end_time(i)<0) then
-             output_end_time(i)=nEndStep
-          endif
-       end do
-
-
-!=======================================================================================================!
-
-#if defined(OSF1) || defined(_BGL) || defined(_NAMELIST_FROM_FILE)
-       close(unit=7)
-#endif
-#endif
     end if
 
     if(se_partmethod /= -1) partmethod = se_partmethod
@@ -338,59 +279,59 @@ module namelist_mod
     !  Spread the namelist stuff around
     ! =====================================
 
-    call MPI_bcast(PARTMETHOD ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(TOPOLOGY     ,MAX_STRING_LEN,MPIChar_t  ,par%root,par%comm,ierr)
-    call MPI_bcast(tasknum ,1,MPIinteger_t,par%root,par%comm,ierr)
+    call MPI_bcast(PARTMETHOD ,1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(TOPOLOGY     ,MAX_STRING_LEN,mpi_character  ,par%root,par%comm,ierr)
+    call MPI_bcast(tasknum ,1,mpi_integer,par%root,par%comm,ierr)
 
-    call MPI_bcast( ne        ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(qsize     ,1,MPIinteger_t,par%root,par%comm,ierr)
+    call MPI_bcast( ne        ,1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(qsize     ,1,mpi_integer,par%root,par%comm,ierr)
 
 
-    call MPI_bcast(remapfreq ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(remap_type, MAX_STRING_LEN, MPIChar_t, par%root, par%comm, ierr)
-    call MPI_bcast(statefreq ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(multilevel ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(useframes ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(runtype   ,1,MPIinteger_t,par%root,par%comm,ierr)
+    call MPI_bcast(remapfreq ,1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(remap_type, MAX_STRING_LEN, mpi_character, par%root, par%comm, ierr)
+    call MPI_bcast(statefreq ,1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(multilevel ,1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(useframes ,1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(runtype   ,1,mpi_integer,par%root,par%comm,ierr)
     phys_tscale = se_phys_tscale
     limiter_option  = se_limiter_option
     nsplit = se_nsplit
-    call MPI_bcast(smooth    ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(phys_tscale,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(NSPLIT,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(limiter_option  ,1,MPIinteger_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(se_ftype     ,1,MPIinteger_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(energy_fixer,1,MPIinteger_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(vert_remap_q_alg,1,MPIinteger_t   ,par%root,par%comm,ierr)
+    call MPI_bcast(smooth    ,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(phys_tscale,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(NSPLIT,1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(limiter_option  ,1,mpi_integer   ,par%root,par%comm,ierr)
+    call MPI_bcast(se_ftype     ,1,mpi_integer   ,par%root,par%comm,ierr)
+    call MPI_bcast(energy_fixer,1,mpi_integer   ,par%root,par%comm,ierr)
+    call MPI_bcast(vert_remap_q_alg,1,mpi_integer   ,par%root,par%comm,ierr)
 
-    call MPI_bcast(fine_ne    ,1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(max_hypervis_courant,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(nu         ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(nu_s         ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(nu_q         ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(nu_div       ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(nu_p         ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(nu_top   ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(psurf_vis,1,MPIinteger_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(hypervis_order,1,MPIinteger_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(hypervis_power,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(hypervis_scaling,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(hypervis_subcycle,1,MPIinteger_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(hypervis_subcycle_q,1,MPIinteger_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(smooth_phis_numcycle,1,MPIinteger_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(smooth_sgh_numcycle,1,MPIinteger_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(smooth_phis_nudt,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(initial_total_mass ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(rotate_grid   ,1,MPIreal_t   ,par%root,par%comm,ierr)
-    call MPI_bcast(mesh_file,MAX_FILE_LEN,MPIChar_t ,par%root,par%comm,ierr)
-    call MPI_bcast(tstep_type,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(cubed_sphere_map,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(qsplit,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(rsplit,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(physics,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(rk_stage_user,1,MPIinteger_t ,par%root,par%comm,ierr)
-    call MPI_bcast(moisture,MAX_STRING_LEN,MPIChar_t ,par%root,par%comm,ierr)
-    call MPI_bcast(columnpackage,MAX_STRING_LEN,MPIChar_t ,par%root,par%comm,ierr)
+    call MPI_bcast(fine_ne    ,1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(max_hypervis_courant,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(nu         ,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(nu_s         ,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(nu_q         ,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(nu_div       ,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(nu_p         ,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(nu_top   ,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(psurf_vis,1,mpi_integer   ,par%root,par%comm,ierr)
+    call MPI_bcast(hypervis_order,1,mpi_integer   ,par%root,par%comm,ierr)
+    call MPI_bcast(hypervis_power,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(hypervis_scaling,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(hypervis_subcycle,1,mpi_integer   ,par%root,par%comm,ierr)
+    call MPI_bcast(hypervis_subcycle_q,1,mpi_integer   ,par%root,par%comm,ierr)
+    call MPI_bcast(smooth_phis_numcycle,1,mpi_integer   ,par%root,par%comm,ierr)
+    call MPI_bcast(smooth_sgh_numcycle,1,mpi_integer   ,par%root,par%comm,ierr)
+    call MPI_bcast(smooth_phis_nudt,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(initial_total_mass ,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(rotate_grid   ,1,MPI_real8   ,par%root,par%comm,ierr)
+    call MPI_bcast(mesh_file,MAX_FILE_LEN,mpi_character ,par%root,par%comm,ierr)
+    call MPI_bcast(tstep_type,1,mpi_integer ,par%root,par%comm,ierr)
+    call MPI_bcast(cubed_sphere_map,1,mpi_integer ,par%root,par%comm,ierr)
+    call MPI_bcast(qsplit,1,mpi_integer ,par%root,par%comm,ierr)
+    call MPI_bcast(rsplit,1,mpi_integer ,par%root,par%comm,ierr)
+    call MPI_bcast(physics,1,mpi_integer ,par%root,par%comm,ierr)
+    call MPI_bcast(rk_stage_user,1,mpi_integer ,par%root,par%comm,ierr)
+    call MPI_bcast(moisture,MAX_STRING_LEN,mpi_character ,par%root,par%comm,ierr)
+    call MPI_bcast(columnpackage,MAX_STRING_LEN,mpi_character,par%root,par%comm,ierr)
 
 
     if (mesh_file /= "none" .AND. ne /=0) then
@@ -405,28 +346,42 @@ module namelist_mod
       call set_mesh_dimensions()
       call MeshOpen(mesh_file, par)
     end if
-    ! set map
-    if (cubed_sphere_map<0) then
-       cubed_sphere_map=0  ! default is equi-angle gnomonic
-       if (ne.eq.0) cubed_sphere_map=2  ! element_local for var-res grids
-    endif
-    if (par%masterproc) write (iulog,*) "Reference element projection: cubed_sphere_map=",cubed_sphere_map
 
-!logic around different hyperviscosity options
+    ! set map
+    if (cubed_sphere_map < 0) then
+      if (ne == 0) then
+        cubed_sphere_map = 2  ! element_local for var-res grids
+      else
+        cubed_sphere_map = 0  ! default is equi-angle gnomonic
+      end if
+    end if
+
+
+
+
+
+
+
+
+    if (par%masterproc) then
+      write (iulog,*) subname, "Reference element projection: cubed_sphere_map=",cubed_sphere_map
+    end if
+
+    !logic around different hyperviscosity options
     if (hypervis_power /= 0) then
       if (hypervis_scaling /= 0) then
-        print *,'Both hypervis_power and hypervis_scaling are nonzero.'
-        print *,'(1) Set hypervis_power=1, hypervis_scaling=0 for HV based on an element area.'
-        print *,'(2) Set hypervis_power=0 and hypervis_scaling=1 for HV based on a tensor.'
-        print *,'(3) Set hypervis_power=0 and hypervis_scaling=0 for constant HV.'
-          call endrun("Error: hypervis_power>0 and hypervis_scaling>0")
-      endif
-    endif
-
+        if (par%masterproc) then
+          write(iulog, *) subname, 'Both hypervis_power and hypervis_scaling are nonzero.'
+          write(iulog, *) '        (1) Set hypervis_power=1, hypervis_scaling=0 for HV based on an element area.'
+          write(iulog, *) '        (2) Set hypervis_power=0 and hypervis_scaling=1 for HV based on a tensor.'
+          write(iulog, *) '        (3) Set hypervis_power=0 and hypervis_scaling=0 for constant HV.'
+        end if
+        call endrun(subname//"ERROR: hypervis_power>0 and hypervis_scaling>0")
+      end if
+    end if
 
     ftype = se_ftype
 
-#ifdef _PRIM
     rk_stage_user=3  ! 3d PRIM code only supports 3 stage RK tracer advection
 
 
@@ -439,19 +394,18 @@ module namelist_mod
           call endrun('limiter 8,84 requires hypervis_subcycle_q=1')
        endif
     endif
-#endif
 
 !=======================================================================================================!
     nmpi_per_node=1
-    call MPI_bcast(interpolate_analysis, 7,MPIlogical_t,par%root,par%comm,ierr)
-    call MPI_bcast(interp_nlat , 1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(interp_nlon , 1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(interp_gridtype , 1,MPIinteger_t,par%root,par%comm,ierr)
-    call MPI_bcast(interp_type , 1,MPIinteger_t,par%root,par%comm,ierr)
+    call MPI_bcast(interpolate_analysis, 7,MPI_logical,par%root,par%comm,ierr)
+    call MPI_bcast(interp_nlat , 1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(interp_nlon , 1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(interp_gridtype , 1,mpi_integer,par%root,par%comm,ierr)
+    call MPI_bcast(interp_type , 1,mpi_integer,par%root,par%comm,ierr)
 
-    call MPI_bcast(replace_vec_by_vordiv ,MAX_VECVARS ,MPIlogical_t,par%root,par%comm,ierr)
-    call MPI_bcast(vector_uvars ,10*MAX_VECVARS ,MPIChar_t,par%root,par%comm,ierr)
-    call MPI_bcast(vector_vvars ,10*MAX_VECVARS ,MPIChar_t,par%root,par%comm,ierr)
+    call MPI_bcast(replace_vec_by_vordiv ,MAX_VECVARS ,MPI_logical,par%root,par%comm,ierr)
+    call MPI_bcast(vector_uvars ,10*MAX_VECVARS ,mpi_character,par%root,par%comm,ierr)
+    call MPI_bcast(vector_vvars ,10*MAX_VECVARS ,mpi_character,par%root,par%comm,ierr)
 
     call set_interp_parameter('gridtype',interp_gridtype)
     call set_interp_parameter("itype",interp_type)
@@ -475,20 +429,21 @@ module namelist_mod
 
     if (multilevel <= 0) then
       nmpi_per_node = 1
-    endif
+    end if
 
-    nnodes = npart/nmpi_per_node
+    nnodes = npart / nmpi_per_node
 
-    if(numnodes > 0 .and. multilevel .eq. 1) then
-        nnodes = numnodes
-        nmpi_per_node = npart/nnodes
-    endif
+    if((numnodes > 0) .and. (multilevel == 1)) then
+      nnodes = numnodes
+      nmpi_per_node = npart/nnodes
+    end if
 
     ! ====================================================================
     !  Do not perform node level partitioning if you are only on one node
     ! ====================================================================
-    ! PartitionForNodes=.FALSE.
-    if((nnodes .eq. 1) .and. PartitionForNodes) PartitionForNodes=.FALSE.
+    if((nnodes .eq. 1) .and. PartitionForNodes) then
+      PartitionForNodes = .FALSE.
+    end if
 
     if (par%masterproc) then
        write(iulog,*)"done reading namelist..."
