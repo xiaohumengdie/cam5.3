@@ -7,8 +7,7 @@ module edge_mod
   use schedtype_mod, only : cycle_t, schedule_t, pgindex_t, schedule
   use parallel_mod, only : abortmp, haltmp, MPIreal_t, MPIinteger_t, iam,parallel_t, &
       MAX_ACTIVE_MSG, HME_status_size, BNDRY_TAG_BASE, HME_BNDRY_A2A, HME_BNDRY_P2P, &
-      HME_MPATTERN_P, HME_MPATTERN_S, HME_MPATTERN_G, HME_BNDRY_A2AO, HME_BNDRY_GET1, &
-      HME_BNDRY_GET2, HME_BNDRY_PUT1, HME_BNDRY_PUT2
+      HME_MPATTERN_P, HME_MPATTERN_S, HME_MPATTERN_G, HME_BNDRY_A2AO
   use edgetype_mod, only : edgedescriptor_t, edgebuffer_t,  &
       Longedgebuffer_t, initedgebuffer_callid
   use element_mod, only : element_t
@@ -465,40 +464,6 @@ contains
     allocate(edge%receive(nbuf))   
     allocate(edge%buf(nbuf))
 
-    if(edge%bndry_type == HME_BNDRY_GET1 .or. &
-       edge%bndry_type == HME_BNDRY_GET2 ) then
-       ! setup the main one-sided window
-       call MPI_TYPE_SIZE(MPIreal_t,sizeofreal,ierr)
-       winSize = INT(sizeofreal*edge%nbuf,kind=long_kind)
-       call MPI_Win_Create(edge%buf,winSize,sizeofreal,MPI_INFO_NULL,par%comm,edge%win,ierr)
-       if(ierr .ne. MPI_SUCCESS) then
-          errorcode=ierr
-          call MPI_Error_String(errorcode,errorstring,errorlen,ierr)
-          print *,subname,': Error after call to MPI_Win_Create: ',errorstring
-       endif
-
-       call MPI_Barrier(par%comm,ierr)
-       !
-       ! communicate the get displacements 
-       !
-       do icycle=1,nSendCycles
-          pCycle => pSchedule%SendCycle(icycle)
-          dest    = pCycle%dest - 1 
-          length  = 1
-          tag     = 2017
-          call MPI_Isend(edge%sdisplsFull(icycle),length,MPIinteger_t,dest,tag,par%comm,edge%Srequest(icycle),ierr)
-       enddo
-       do icycle=1,nRecvCycles
-          pCycle => pSchedule%RecvCycle(icycle)
-          source  = pCycle%source - 1 
-          length  = 1
-          tag     = 2017
-          call MPI_Irecv(edge%getDisplsFull(icycle),length,MPIinteger_t,source,tag,par%comm,edge%Rrequest(icycle),ierr)
-       enddo
-       if (nRecvCycles>0) call MPI_Waitall(nSendCycles,edge%Srequest,edge%status,ierr)
-       if (nSendCycles>0) call MPI_Waitall(nRecvCycles,edge%Rrequest,edge%status,ierr)
-     endif
-
 !    print *,'RANK: ',par%rank, ' sdisplsFull: ',edge%sdisplsFull
 !    print *,'RANK: ',par%rank, ' rdisplsFull: ',edge%rdisplsFull
 !    print *,'RANK: ',par%rank, ' destFull: ',Schedule(1)%destFull
@@ -508,42 +473,6 @@ contains
     if(Debug) write(*,21) par%rank, ' rdisplsFull: ',edge%rdisplsFull
     if(Debug) write(*,21) par%rank, ' destFull: ',Schedule(1)%destFull
     if(Debug) write(*,21) par%rank, ' srcFull: ',Schedule(1)%srcFull
-
-    
-    if(edge%bndry_type == HME_BNDRY_PUT1 .or. &
-       edge%bndry_type == HME_BNDRY_PUT2 ) then
-       ! setup the main one-sided window
-       call MPI_TYPE_SIZE(MPIreal_t,sizeofreal,ierr)
-       winSize = INT(sizeofreal*edge%nbuf,kind=long_kind)
-       call MPI_Win_Create(edge%receive,winSize,sizeofreal,MPI_INFO_NULL,par%comm,edge%win,ierr)
-       if(ierr .ne. MPI_SUCCESS) then
-          errorcode=ierr
-          call MPI_Error_String(errorcode,errorstring,errorlen,ierr)
-          print *,subname,': Error after call to MPI_Win_Create: ',errorstring
-       endif
-
-       call MPI_Barrier(par%comm,ierr)
-       !
-       !
-       ! communicate the put displacements 
-       !
-       do icycle=1,nRecvCycles
-          pCycle => pSchedule%RecvCycle(icycle)
-          source    = pCycle%source - 1 
-          length  = 1
-          tag     = 2018
-          call MPI_Isend(edge%rdisplsFull(icycle),length,MPIinteger_t,source,tag,par%comm,edge%Srequest(icycle),ierr)
-       enddo
-       do icycle=1,nSendCycles
-          pCycle => pSchedule%SendCycle(icycle)
-          dest  = pCycle%dest - 1 
-          length  = 1
-          tag     = 2018
-          call MPI_Irecv(edge%putDisplsFull(icycle),length,MPIinteger_t,dest,tag,par%comm,edge%Rrequest(icycle),ierr)
-       enddo
-       if (nSendCycles>0) call MPI_Waitall(nSendCycles,edge%Srequest,edge%status,ierr)
-       if (nRecvCycles>0) call MPI_Waitall(nRecvCycles,edge%Rrequest,edge%status,ierr)
-    endif
 
     if(Debug) write(*,21) par%rank,' Get Displacements: ',edge%getDisplsFull(:)
 !    print *,'RANK: ',par%rank,' Get Displacements: ',edge%getDisplsFull(:)

@@ -803,7 +803,7 @@ module prim_advection_mod
   use edgetype_mod, only       : EdgeBuffer_t
   use edge_mod, only           : edgevpack, edgerotate, edgevunpack, initedgebuffer, initedgesbuffer, edgevunpackmin
   use hybrid_mod, only         : hybrid_t
-  use bndry_mod, only          : bndry_exchangev
+  use bndry_mod, only          : bndry_exchange
   use viscosity_mod, only      : biharmonic_wk_scalar,  neighbor_minmax, &
                                  neighbor_minmax_start, neighbor_minmax_finish
   use perf_mod, only           : t_startf, t_stopf, t_barrierf ! _EXTERNAL
@@ -1046,7 +1046,7 @@ contains
   use element_mod    , only : element_t
   use derivative_mod , only : derivative_t, divergence_sphere, gradient_sphere, vorticity_sphere
   use edge_mod       , only : edgevpack, edgevunpack
-  use bndry_mod      , only : bndry_exchangev
+  use bndry_mod      , only : bndry_exchange
   use hybvcoord_mod  , only : hvcoord_t
   implicit none
   integer              , intent(in   )         :: np1_qdp, n0_qdp
@@ -1351,7 +1351,7 @@ contains
      call edgeVpack( edgeAdvp1 , DSSvar(:,:,1:nlev) , nlev , kptr , ie )
   enddo
 
-  call bndry_exchangeV( hybrid , edgeAdvp1    )
+  call bndry_exchange( hybrid , edgeAdvp1    )
 
   do ie = nets , nete
     ! only perform this operation on thread which owns the first tracer
@@ -1821,7 +1821,7 @@ contains
   use derivative_mod , only : derivative_t
   use edgetype_mod   , only : EdgeBuffer_t
   use edge_mod       , only : edgevpack, edgevunpack
-  use bndry_mod      , only : bndry_exchangev
+  use bndry_mod      , only : bndry_exchange
   use perf_mod       , only : t_startf, t_stopf                          ! _EXTERNAL
   implicit none
   type (EdgeBuffer_t)  , intent(inout)         :: edgeAdv
@@ -1916,7 +1916,7 @@ contains
       call edgeVpack  ( edgeAdv , elem(ie)%state%Qdp(:,:,:,:,nt_qdp) , qsize*nlev , 0 , ie )
     enddo
 
-    call bndry_exchangeV( hybrid , edgeAdv )
+    call bndry_exchange( hybrid , edgeAdv )
 
     do ie = nets , nete
       call edgeVunpack( edgeAdv , elem(ie)%state%Qdp(:,:,:,:,nt_qdp) , qsize*nlev , 0 , ie )

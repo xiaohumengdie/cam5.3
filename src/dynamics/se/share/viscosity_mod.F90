@@ -17,7 +17,7 @@ module viscosity_mod
   use edgetype_mod,   only: EdgeBuffer_t
   use edge_mod,       only: edgevpack, edgerotate, edgevunpack, edgevunpackmin, &
        edgevunpackmax, initEdgeBuffer, FreeEdgeBuffer, edgeSunpackmax, edgeSunpackmin, edgeSpack
-  use bndry_mod,      only: bndry_exchangev, bndry_exchangeS, bndry_exchangeS_start, bndry_exchangeS_finish
+  use bndry_mod,      only: bndry_exchange, bndry_exchange_start, bndry_exchange_finish
   use control_mod,    only: hypervis_scaling, nu, nu_div
 
 
@@ -127,7 +127,7 @@ subroutine biharmonic_wk_dp3d(elem,dptens,ptens,vtens,deriv,edge3,hybrid,nt,nets
 
    enddo
    
-   call bndry_exchangeV(hybrid,edge3)
+   call bndry_exchange(hybrid,edge3)
    
    do ie=nets,nete
       rspheremv     => elem(ie)%rspheremp(:,:)
@@ -247,7 +247,7 @@ logical var_coef1
       call edgeVpack(edge3, pstens(:,:,ie),1,kptr,ie)
    enddo
    
-   call bndry_exchangeV(hybrid,edge3)
+   call bndry_exchange(hybrid,edge3)
    
    do ie=nets,nete
       rspheremv     => elem(ie)%rspheremp(:,:)
@@ -388,7 +388,7 @@ logical var_coef1
    enddo
 
 
-   call bndry_exchangeV(hybrid,edgeq)
+   call bndry_exchange(hybrid,edgeq)
    
    do ie=nets,nete
 
@@ -433,7 +433,7 @@ do ie=nets,nete
    kptr=0
    call edgeVpack(edge1, zeta(1,1,1,ie),nlev,kptr,ie)
 enddo
-call bndry_exchangeV(hybrid,edge1)
+call bndry_exchange(hybrid,edge1)
 do ie=nets,nete
    kptr=0
    call edgeVunpack(edge1, zeta(1,1,1,ie),nlev,kptr, ie)
@@ -481,7 +481,7 @@ do ie=nets,nete
    kptr=0
    call edgeVpack(edge2, v(1,1,1,1,ie),2*nlev,kptr,ie)
 enddo
-call bndry_exchangeV(hybrid,edge2)
+call bndry_exchange(hybrid,edge2)
 do ie=nets,nete
    kptr=0
    call edgeVunpack(edge2, v(1,1,1,1,ie),2*nlev,kptr,ie)
@@ -735,7 +735,7 @@ subroutine neighbor_minmax(hybrid,edgeMinMax,nets,nete,min_neigh,max_neigh)
       enddo
    enddo
    
-   call bndry_exchangeS(hybrid,edgeMinMax,location='neighbor_minmax')
+   call bndry_exchange(hybrid,edgeMinMax,location='neighbor_minmax')
 
    do ie=nets,nete
       do q=1,qsize
@@ -783,7 +783,7 @@ subroutine neighbor_minmax_start(hybrid,edgeMinMax,nets,nete,min_neigh,max_neigh
       enddo
    enddo
 
-   call bndry_exchangeS_start(hybrid,edgeMinMax,location='viscosity_mod:882')
+   call bndry_exchange_start(hybrid,edgeMinMax,location='viscosity_mod:882')
 
 end subroutine neighbor_minmax_start
 
@@ -807,7 +807,7 @@ subroutine neighbor_minmax_finish(hybrid,edgeMinMax,nets,nete,min_neigh,max_neig
    kblk = kend - kbeg + 1   ! calculate size of the block of vertical levels
    qblk = qend - qbeg + 1   ! calculate size of the block of tracers
 
-   call bndry_exchangeS_finish(hybrid,edgeMinMax,location='viscosity_mod:902')
+   call bndry_exchange_finish(hybrid,edgeMinMax,location='viscosity_mod:902')
 
    do ie=nets,nete
       do q=qbeg, qend

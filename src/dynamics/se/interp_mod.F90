@@ -115,7 +115,7 @@ contains
     use shr_pio_mod,     only: shr_pio_getiosys
     use edgetype_mod,    only: edgebuffer_t
     use edge_mod,        only: edgevpack, edgevunpack, initedgebuffer, freeedgebuffer
-    use bndry_mod,       only: bndry_exchangeV
+    use bndry_mod,       only: bndry_exchange
     use parallel_mod,    only: par
     use cam_abortutils,  only: endrun
     
@@ -213,7 +213,7 @@ contains
           call edgeVpack(edgebuf, dest(:,:,:,ie), numlev, 0, ie)
        enddo
        if(iam < par%nprocs) then
-          call bndry_exchangeV(par, edgebuf)
+          call bndry_exchange(par, edgebuf)
        end if
        do ie=1,nelemd
           call edgeVunpack(edgebuf, dest(:,:,:,ie), numlev, 0, ie)
@@ -305,7 +305,7 @@ contains
     use shr_pio_mod, only : shr_pio_getiosys
     use edgetype_mod, only : edgebuffer_t
     use edge_mod, only : edgevpack, edgevunpack, initedgebuffer, freeedgebuffer
-    use bndry_mod, only : bndry_exchangeV
+    use bndry_mod, only : bndry_exchange
     use parallel_mod,   only: par
     implicit none
     type(file_desc_t), intent(inout) :: File
@@ -409,7 +409,7 @@ contains
           call edgeVpack(edgebuf, dest(:,:,:,:,ie), 2*numlev, 0, ie)
        enddo
        if(iam < par%nprocs) then
-          call bndry_exchangeV(par, edgebuf)
+          call bndry_exchange(par, edgebuf)
        end if
 
        do ie=1,nelemd

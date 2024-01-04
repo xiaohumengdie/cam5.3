@@ -30,7 +30,7 @@ contains
   subroutine read_inidat( ncid_ini, ncid_topo, dyn_in)
     use dyn_comp,           only: dyn_import_t
     use parallel_mod,       only: par
-    use bndry_mod,          only: bndry_exchangev
+    use bndry_mod,          only: bndry_exchange
     use constituents,       only: cnst_name, cnst_read_iv, qmin
     use dimensions_mod,     only: nelemd, nlev, np
     use dof_mod,            only: putUniquePoints
@@ -290,7 +290,7 @@ contains
        call edgeVpack(edge, elem(ie)%state%Q(:,:,:,:),nlev*pcnst,kptr,ie)
     end do
     if(iam < par%nprocs) then
-       call bndry_exchangeV(par,edge)
+       call bndry_exchange(par,edge)
     end if
     do ie=1,nelemd
        kptr=0

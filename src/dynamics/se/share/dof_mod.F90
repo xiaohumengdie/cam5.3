@@ -8,7 +8,7 @@ module dof_mod
   use edge_mod,       only: initedgebuffer,freeedgebuffer,            &
                longedgevpack, longedgevunpackmin
   use edgetype_mod,   only: longedgebuffer_t
-  use bndry_mod,      only: bndry_exchangev
+  use bndry_mod,      only: bndry_exchange
 implicit none
 private
   ! public data
@@ -100,7 +100,7 @@ contains
     ! Insert boundary exchange here
     ! ==============================
 
-    call bndry_exchangeV(par,edge)
+    call bndry_exchange(par,edge)
 
     do ie=1,nelemd
        ! we should unpack directly into elem(ie)%gdofV, but we dont have
@@ -373,7 +373,7 @@ contains
        end do
        call LongEdgeVpack(edge,fdofp_local(:,:,ie),1,0,elem(ie)%desc)
     end do
-    call bndry_exchangeV(par,edge)
+    call bndry_exchange(par,edge)
     do ie=1,nelemd
        base = (ie-1)*(np-1)*(np-1)
        call LongEdgeVunpackMIN(edge,fdofp_local(:,:,ie),1,0,elem(ie)%desc)

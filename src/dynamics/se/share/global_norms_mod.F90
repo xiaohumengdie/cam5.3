@@ -102,7 +102,7 @@ contains
     use parallel_mod, only : abortmp, global_shared_buf, global_shared_sum
     use edgetype_mod, only : EdgeBuffer_t
     use edge_mod, only : initedgebuffer, FreeEdgeBuffer, edgeVpack, edgeVunpack
-    use bndry_mod, only : bndry_exchangeV
+    use bndry_mod, only : bndry_exchange
 
     type(element_t)      , intent(inout) :: elem(:)
     integer              , intent(in) :: nets,nete
@@ -249,7 +249,7 @@ contains
     use cam_abortutils, only: endrun
     use parallel_mod,   only: global_shared_buf, global_shared_sum
     use edge_mod,       only: initedgebuffer, FreeEdgeBuffer, edgeVpack, edgeVunpack
-    use bndry_mod,      only: bndry_exchangeV
+    use bndry_mod,      only: bndry_exchange
     use time_mod,       only: tstep
     use control_mod, only : tracer_transport_type
     use control_mod, only : TRACERTRANSPORT_SE_GLL
@@ -417,7 +417,7 @@ contains
         zeta(:,:,ie) = elem(ie)%variable_hyperviscosity(:,:)*elem(ie)%spheremp(:,:)
         call edgeVpack(edgebuf,zeta(1,1,ie),1,0,ie)
       end do
-      call bndry_exchangeV(hybrid,edgebuf)
+      call bndry_exchange(hybrid,edgebuf)
       do ie=nets,nete
         call edgeVunpack(edgebuf,zeta(1,1,ie),1,0,ie)
         elem(ie)%variable_hyperviscosity(:,:) = zeta(:,:,ie)*elem(ie)%rspheremp(:,:)
@@ -471,7 +471,7 @@ contains
             call edgeVpack(edgebuf,zeta(1,1,ie),1,0,ie)
           end do
           
-          call bndry_exchangeV(hybrid,edgebuf)
+          call bndry_exchange(hybrid,edgebuf)
           do ie=nets,nete
             call edgeVunpack(edgebuf,zeta(1,1,ie),1,0,ie)
             elem(ie)%tensorVisc(:,:,rowind,colind) = zeta(:,:,ie)*elem(ie)%rspheremp(:,:)

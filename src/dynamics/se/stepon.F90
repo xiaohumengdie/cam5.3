@@ -204,7 +204,7 @@ subroutine stepon_run1( dtime_out, phys_state, phys_tend,               &
 end subroutine stepon_run1
 
 subroutine stepon_run2(phys_state, phys_tend, dyn_in, dyn_out )
-   use bndry_mod,      only: bndry_exchangeV
+   use bndry_mod,      only: bndry_exchange
    use dimensions_mod, only: nlev, nelemd, np, npsq
    use dp_coupling,    only: p_d_coupling
    use parallel_mod,   only: par
@@ -246,7 +246,7 @@ subroutine stepon_run2(phys_state, phys_tend, dyn_in, dyn_out )
       call edgeVpack(edgebuf,dyn_in%elem(ie)%derived%FQ(:,:,:,:,1),nlev*pcnst,kptr,ie)
    end do
 
-   call bndry_exchangeV(par, edgebuf)
+   call bndry_exchange(par, edgebuf)
 
    ! NOTE: rec2dt MUST be 1/dtime_out as computed above
 !  rec2dt = 1./real(dtime,r8)

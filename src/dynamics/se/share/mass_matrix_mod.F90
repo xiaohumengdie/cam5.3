@@ -10,7 +10,7 @@ module mass_matrix_mod
   use parallel_mod, only : parallel_t
   use edgetype_mod, only : edgebuffer_t
   use edge_mod, only : edgevpack,edgevunpack, freeedgebuffer,initedgebuffer  
-  use bndry_mod, only : bndry_exchangev
+  use bndry_mod, only : bndry_exchange
 implicit none
 private
 
@@ -70,7 +70,7 @@ contains
     ! Insert boundary exchange here
     ! ==============================
 
-    call bndry_exchangeV(par,edge)
+    call bndry_exchange(par,edge)
 
     do ii=1,nelemd
 
@@ -101,7 +101,7 @@ contains
        kptr=0
        call edgeVpack(edge,elem(ii)%rspheremp,1,kptr,ii)
     end do
-    call bndry_exchangeV(par,edge)
+    call bndry_exchange(par,edge)
     do ii=1,nelemd
        kptr=0
        call edgeVunpack(edge,elem(ii)%rspheremp,1,kptr,ii)

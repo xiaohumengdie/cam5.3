@@ -115,7 +115,7 @@ CONTAINS
     use physical_constants, only : kappa
     use derivative_mod, only : gradient_sphere, ugradv_sphere
     use edge_mod, only : edgevpack, edgevunpack
-    use bndry_mod, only : bndry_exchangev
+    use bndry_mod, only : bndry_exchange
     use dyn_comp, only : hvcoord
     implicit none
     type (hybrid_t)      , intent(in) :: hybrid
@@ -162,7 +162,7 @@ CONTAINS
        call edgeVpack(edge3, frontgf(:,:,:,ie),nlev,0,ie)
        call edgeVpack(edge3, gradth(:,:,:,:,ie),2*nlev,nlev,ie)
     enddo
-    call bndry_exchangeV(hybrid,edge3)
+    call bndry_exchange(hybrid,edge3)
     do ie=nets,nete
        call edgeVunpack(edge3, frontgf(:,:,:,ie),nlev,0,ie)
        call edgeVunpack(edge3, gradth(:,:,:,:,ie),2*nlev,nlev,ie)

@@ -1,9 +1,12 @@
 #define _DBG_
 module prim_driver_mod
-  use kinds, only : real_kind, iulog, longdouble_kind
-  use dimensions_mod, only : np, nlev, nlevp, nelem, nelemd, nelemdmax, GlobalUniqueCols, qsize, nc,nhc
-  use hybrid_mod, only : hybrid_t
-  use quadrature_mod, only : quadrature_t, test_gauss, test_gausslobatto, gausslobatto
+  use shr_kind_mod,           only: r8=>shr_kind_r8
+  use cam_logfile,            only: iulog
+  use cam_abortutils,         only: endrun
+  use dimensions_mod,         only: np, nlev, nlevp, nelem, nelemd, nelemdmax, GlobalUniqueCols, qsize, nc,nhc
+  use hybrid_mod,             only: hybrid_t
+  use derivative_mod,         only: derivative_t
+  use quadrature_mod,         only : quadrature_t, test_gauss, test_gausslobatto, gausslobatto
   use derivative_mod, only : derivative_t
   use reduction_mod, only : reductionbuffer_ordered_1d_t, red_min, red_max, &
          red_sum, red_sum_int, red_flops, initreductionbuffer
@@ -56,9 +59,7 @@ contains
     use prim_advance_mod, only: prim_advance_init
     ! --------------------------------
     use parallel_mod, only : iam, parallel_t, syncmp, abortmp, global_shared_buf, nrepro_vars
-#ifdef _MPI
-    use parallel_mod, only : mpiinteger_t, mpireal_t, mpi_max, mpi_sum, haltmp
-#endif
+    use spmd_utils,             only: mpi_integer, mpi_max
     ! --------------------------------
     use spacecurve_mod, only : genspacepart
     ! --------------------------------
@@ -87,8 +88,8 @@ contains
     integer :: iMv
     integer :: err, ierr, l, j
 
-    real(kind=real_kind), allocatable :: aratio(:,:)
-    real(kind=real_kind) :: area(1)
+    real(kind=r8), allocatable :: aratio(:,:)
+    real(kind=r8) :: area(1)
     character(len=80) rot_type   ! cube edge rotation type
 
     integer  :: i
@@ -96,7 +97,7 @@ contains
     integer,allocatable :: HeadPartition(:)
 
     integer total_nelem
-    real(kind=real_kind) :: approx_elements_per_task
+    real(kind=r8) :: approx_elements_per_task
 
     ! ====================================
     ! Set cube edge rotation type for model
@@ -183,7 +184,7 @@ contains
        stop
     endif
 #ifdef _MPI
-    call mpi_allreduce(nelemd,nelemdmax,1,MPIinteger_t,MPI_MAX,par%comm,ierr)
+    call mpi_allreduce(nelemd,nelemdmax,1,MPI_integer,MPI_MAX,par%comm,ierr)
 #else
     nelemdmax=nelemd
 #endif
@@ -202,7 +203,7 @@ contains
 
 
     allocate(global_shared_buf(nelemd,nrepro_vars))
-    global_shared_buf=0.0_real_kind
+    global_shared_buf=0.0_r8
     !  nlyr=edge3p1%nlyr
     !  call MessageStats(nlyr)
     !  call testchecksum(par,GridEdge)
@@ -379,16 +380,16 @@ contains
     ! Local variables
     ! ==================================
 
-    real (kind=real_kind) :: dt              ! "timestep dependent" timestep
+    real (kind=r8) :: dt              ! "timestep dependent" timestep
 !   variables used to calculate CFL
-    real (kind=real_kind) :: dtnu            ! timestep*viscosity parameter
-    real (kind=real_kind) :: dt_dyn_vis      ! viscosity timestep used in dynamics
-    real (kind=real_kind) :: dt_tracer_vis      ! viscosity timestep used in tracers
+    real (kind=r8) :: dtnu            ! timestep*viscosity parameter
+    real (kind=r8) :: dt_dyn_vis      ! viscosity timestep used in dynamics
+    real (kind=r8) :: dt_tracer_vis      ! viscosity timestep used in tracers
 
-    real (kind=real_kind) :: dp
+    real (kind=r8) :: dp
 
 
-    real (kind=real_kind) :: ps(np,np)       ! surface pressure
+    real (kind=r8) :: ps(np,np)       ! surface pressure
 
     character(len=80)     :: fname
     character(len=8)      :: njusn
@@ -563,15 +564,15 @@ contains
 
     integer, intent(in)                     :: nets  ! starting thread element number (private)
     integer, intent(in)                     :: nete  ! ending thread element number   (private)
-    real(kind=real_kind), intent(in)        :: dt  ! "timestep dependent" timestep
+    real(kind=r8), intent(in)        :: dt  ! "timestep dependent" timestep
     type (TimeLevel_t), intent(inout)       :: tl
     integer, intent(in)                     :: nsubstep  ! nsubstep = 1 .. nsplit
-    real(kind=real_kind) :: st, st1, dp, dt_q, dt_remap
+    real(kind=r8) :: st, st1, dp, dt_q, dt_remap
     integer :: ie, t, q,k,i,j,n, n_Q
     integer :: n0_qdp,np1_qdp,r, nstep_end
 
-    real (kind=real_kind)                          :: maxcflx, maxcfly
-    real (kind=real_kind) :: dp_np1(np,np)
+    real (kind=r8)                          :: maxcflx, maxcfly
+    real (kind=r8) :: dp_np1(np,np)
 
     ! ===================================
     ! Main timestepping loop
@@ -712,14 +713,14 @@ contains
 
     integer, intent(in)                     :: nets  ! starting thread element number (private)
     integer, intent(in)                     :: nete  ! ending thread element number   (private)
-    real(kind=real_kind), intent(in)        :: dt  ! "timestep dependent" timestep
+    real(kind=r8), intent(in)        :: dt  ! "timestep dependent" timestep
     type (TimeLevel_t), intent(inout)       :: tl
-    real(kind=real_kind) :: st, st1, dp, dt_q
+    real(kind=r8) :: st, st1, dp, dt_q
     integer :: ie, t, q,k,i,j,n, n_Q
 
-    real (kind=real_kind)                          :: maxcflx, maxcfly
+    real (kind=r8)                          :: maxcflx, maxcfly
 
-    real (kind=real_kind) :: dp_np1(np,np)
+    real (kind=r8) :: dp_np1(np,np)
 
     dt_q = dt*qsplit
 
@@ -823,7 +824,6 @@ contains
 !  fixer will add a constant to the temperature so E(n=2) = E(n=1)
 !
     use parallel_mod, only: global_shared_buf, global_shared_sum
-    use kinds, only : real_kind
     use hybvcoord_mod, only : hvcoord_t
     use physical_constants, only : Cp
     use time_mod, only : timelevel_t
@@ -839,19 +839,19 @@ contains
     integer, intent(in)                    :: nsubstep
 
     integer :: ie,k,i,j,nmax
-    real (kind=real_kind), dimension(np,np,nlev)  :: dp   ! delta pressure
-    real (kind=real_kind), dimension(np,np,nlev)  :: sumlk
-    real (kind=real_kind), pointer  :: PEner(:,:,:)
-    real (kind=real_kind), dimension(np,np)  :: suml
-    real (kind=real_kind) :: psum(nets:nete,4),psum_g(4),beta
+    real (kind=r8), dimension(np,np,nlev)  :: dp   ! delta pressure
+    real (kind=r8), dimension(np,np,nlev)  :: sumlk
+    real (kind=r8), pointer  :: PEner(:,:,:)
+    real (kind=r8), dimension(np,np)  :: suml
+    real (kind=r8) :: psum(nets:nete,4),psum_g(4),beta
 
     ! when forcing is applied during dynamics timstep, actual forcing is
     ! slightly different (about 0.1 W/m^2) then expected by the physics
     ! since u & T are changing while FU and FT are held constant.
     ! to correct for this, save compute de_from_forcing at step 1
     ! and then adjust by:  de_from_forcing_step1 - de_from_forcing_stepN
-    real (kind=real_kind),save :: de_from_forcing_step1
-    real (kind=real_kind)      :: de_from_forcing
+    real (kind=r8),save :: de_from_forcing_step1
+    real (kind=r8)      :: de_from_forcing
 
     t2=tl%np1    ! timelevel for T
     if (use_cpstar /= 0 ) then
@@ -931,21 +931,20 @@ contains
     use hybrid_mod, only : hybrid_t
     use edgetype_mod, only : EdgeBuffer_t
     use edge_mod, only : edgevpack, edgevunpack
-    use bndry_mod, only : bndry_exchangev
     use derivative_mod, only : derivative_t , laplace_sphere_wk
     use prim_advance_mod, only : smooth_phis
     use prim_advection_mod, only: deriv
     implicit none
 
     integer , intent(in) :: nets,nete
-    real (kind=real_kind), intent(inout)   :: phis(np,np,nets:nete)
-    real (kind=real_kind), intent(inout)   :: sghdyn(np,np,nets:nete)
-    real (kind=real_kind), intent(inout)   :: sgh30dyn(np,np,nets:nete)
+    real (kind=r8), intent(inout)   :: phis(np,np,nets:nete)
+    real (kind=r8), intent(inout)   :: sghdyn(np,np,nets:nete)
+    real (kind=r8), intent(inout)   :: sgh30dyn(np,np,nets:nete)
     type (hybrid_t)      , intent(in) :: hybrid
     type (element_t)     , intent(inout), target :: elem(:)
     ! local
     integer :: ie
-    real (kind=real_kind) :: minf
+    real (kind=r8) :: minf
 
     minf=-9e9
     if (hybrid%masterthread) &

@@ -332,7 +332,7 @@ CONTAINS
     use cam_abortutils,   only: endrun
     use namelist_mod, only: readnl
     use constituents, only : cnst_name
-    use bndry_mod,   only: bndry_exchangeV
+    use bndry_mod,   only: bndry_exchange
     use edgetype_mod,   only: EdgeBuffer_t
     use edge_mod,       only: initEdgeBuffer, FreeEdgeBuffer, &
          edgeVpack, edgeVunpack

@@ -1,24 +1,20 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 module interpolate_mod
-  use kinds, only : real_kind, iulog
-  use element_mod, only : element_t
-  use dimensions_mod, only : np, ne, nelemd, nc, nhe, nhc
-  use quadrature_mod, only : quadrature_t, legendre, quad_norm
-  use coordinate_systems_mod, only : spherical_polar_t, cartesian2d_t, &
-       cartesian3D_t, sphere2cubedsphere, spherical_to_cart, &
+  use shr_kind_mod,           only: r8=>shr_kind_r8
+  use element_mod,            only: element_t
+  use dimensions_mod,         only: np, ne, nelemd, nc, nhe, nhc
+  use quadrature_mod,         only: quadrature_t, legendre, quad_norm
+  use coordinate_systems_mod, only: spherical_polar_t, cartesian2d_t,         &
+       cartesian3D_t, sphere2cubedsphere, spherical_to_cart,                  &
        cubedsphere2cart, distance, change_coordinates, projectpoint
-  use physical_constants,     only : DD_PI
-  use quadrature_mod,         only : quadrature_t, gauss, gausslobatto
-  use parallel_mod,           only : abortmp, syncmp, parallel_t, MPIreal_t, MPIinteger_t
-#ifdef _MPI
-  use parallel_mod,           only : MPI_MAX, MPI_SUM, MPI_MIN
-#endif
-  use cube_mod,               only : convert_gbl_index, dmap, ref2sphere
-  use mesh_mod,               only : MeshUseMeshFile
-  use control_mod,            only : cubed_sphere_map
+  use physconst,              only: PI
+  use quadrature_mod,         only: quadrature_t, gauss, gausslobatto
+  use parallel_mod,           only: syncmp, parallel_t
+  use cam_abortutils,         only: endrun
+  use spmd_utils,             only: MPI_MAX, MPI_SUM, MPI_MIN, mpi_real8, MPI_integer
+  use cube_mod,               only: convert_gbl_index, dmap, ref2sphere
+  use mesh_mod,               only: MeshUseMeshFile
+  use control_mod,            only: cubed_sphere_map
+  use cam_logfile,            only: iulog
 
   implicit none
   private
@@ -30,10 +26,10 @@ module interpolate_mod
   logical, public :: replace_vec_by_vordiv(MAX_VECVARS)
 
   type, public :: interpolate_t
-     real (kind=real_kind), dimension(:,:), pointer :: Imat  ! P_k(xj)*wj/gamma(k)
-     real (kind=real_kind), dimension(:)  , pointer :: rk    ! 1/k
-     real (kind=real_kind), dimension(:)  , pointer :: vtemp ! temp results
-     real (kind=real_kind), dimension(:)  , pointer :: glp   ! GLL pts (nair)
+     real (kind=r8), dimension(:,:), pointer :: Imat  ! P_k(xj)*wj/gamma(k)
+     real (kind=r8), dimension(:)  , pointer :: rk    ! 1/k
+     real (kind=r8), dimension(:)  , pointer :: vtemp ! temp results
+     real (kind=r8), dimension(:)  , pointer :: glp   ! GLL pts (nair)
   end type interpolate_t
 
   type, public :: interpdata_t
@@ -48,13 +44,13 @@ module interpolate_mod
      logical                                  :: first_entry = .TRUE.
   end type interpdata_t
 
-  real (kind=real_kind), private :: delta  = 1.0D-9  ! move tiny bit off center to
+  real (kind=r8), private :: delta  = 1.0e-9_r8  ! move tiny bit off center to
   ! avoid landing on element edges
   public :: interp_init
   public :: setup_latlon_interp
   public :: interpolate_scalar
   public :: interpolate_ce
-  
+
   public :: interpolate_vector
   public :: set_interp_parameter
   public :: get_interp_parameter
@@ -90,7 +86,9 @@ module interpolate_mod
   ! Seven possible history files, last one is inithist and should be native grid
   logical, public, save :: interpolate_analysis(8) = (/.true.,.false.,.false.,.false.,.false.,.false.,.false.,.false./)
   integer :: nlat,nlon
-  real (kind=real_kind), pointer,dimension(:)   :: lat(:),lon(:),gweight(:)
+  real (kind=r8), pointer, public   :: lat(:)     => NULL()
+  real (kind=r8), pointer, public   :: lon(:)     => NULL()
+  real (kind=r8), pointer, public   :: gweight(:) => NULL()
   integer :: gridtype = 1        !
   integer :: itype = 1           ! 0 = native high order
                                  ! 1 = bilinear
@@ -101,9 +99,9 @@ module interpolate_mod
 
   ! static data, used by bilin_phys2gll()
   ! shared by all threads.  only allocate if subroutine will be used
-  integer  :: nphys_init=0
-  integer  :: index_l(np),index_r(np)
-  real(kind=real_kind),allocatable :: weights(:,:,:,:,:) ! np,np,2,2,nelemd
+!JMD  integer  :: nphys_init=0
+!JMD  integer  :: index_l(np),index_r(np)
+!JMD  real(kind=r8),allocatable :: weights(:,:,:,:,:) ! np,np,2,2,nelemd
 contains
 
 
@@ -111,7 +109,7 @@ contains
     character*(*), intent(in) :: parm_name
     character(len=80) :: msg
     integer :: value,power
-    real (kind=real_kind) :: value_target
+    real (kind=r8) :: value_target
 
     if(parm_name .eq. 'itype') then
        itype=value
@@ -136,8 +134,8 @@ contains
            nlon = 1536
            nlat = 768
        else
-           value_target=value*1.25
-           power = nint(.5 +  log( value_target)/log(2d0) )
+           value_target=value*1.25_r8
+           power = nint(0.5_r8 +  log( value_target)/log(2.0_r8) )
            power = max(power,7) ! min grid: 64x128
            if ( 3*2**(power-2) > value_target) then
                nlon=3*2**(power-2)   ! use 1 power of 3
@@ -149,7 +147,7 @@ contains
        if (gridtype==1) nlat=nlat+1
     else
        write(msg,*) 'Did not recognize parameter named ',parm_name,' in interpolate_mod:set_interp_parameter'
-       call abortmp(msg)
+       call endrun(msg)
     end if
   end subroutine set_interp_parameter
   function get_interp_parameter(parm_name) result(value)
@@ -169,25 +167,23 @@ contains
     else
        write(msg,*) 'Did not recognize parameter named ',parm_name,' in interpolate_mod:get_interp_parameter'
        value=-1
-       call abortmp(msg)
+       call endrun(msg)
     end if
     return
   end function get_interp_parameter
   function get_interp_gweight() result(gw)
-    real(kind=real_kind) :: gw(nlat)
+    real(kind=r8) :: gw(nlat)
     gw=gweight
     return
   end function get_interp_gweight
   function get_interp_lat() result(thislat)
-    use physical_constants, only : DD_PI
-    real(kind=real_kind) :: thislat(nlat)
-    thislat=lat*180.0D0/DD_PI
+    real(kind=r8) :: thislat(nlat)
+    thislat=lat*180.0_r8/PI
     return
   end function get_interp_lat
   function get_interp_lon() result(thislon)
-    use physical_constants, only : DD_PI
-    real(kind=real_kind) :: thislon(nlon)
-    thislon=lon*180.0D0/DD_PI
+    real(kind=r8) :: thislon(nlon)
+    thislon=lon*180.0_r8/PI
     return
   end function get_interp_lon
 
@@ -200,8 +196,8 @@ contains
 
     integer k,j
     integer npts
-    real (kind=real_kind), dimension(:), allocatable :: gamma
-    real (kind=real_kind), dimension(:), allocatable :: leg
+    real (kind=r8), dimension(:), allocatable :: gamma
+    real (kind=r8), dimension(:), allocatable :: leg
 
     npts = size(gquad%points)
 
@@ -215,7 +211,7 @@ contains
     gamma = quad_norm(gquad,npts)
 
     do k=1,npts
-       interp%rk(k) = 1.0D0/k
+       interp%rk(k) = 1.0_r8/k
        interp%glp(k) = gquad%points(k)    !nair
     end do
 
@@ -233,7 +229,6 @@ contains
 
 
   subroutine interpolate_tracers(r, tracers, f) 
-    use kinds,          only : longdouble_kind
     use dimensions_mod, only : np, qsize
     use quadrature_mod, only : quadrature_t, gausslobatto
 
@@ -241,15 +236,15 @@ contains
     implicit none
 
     type (cartesian2D_t), intent(in)  :: r
-    real (kind=real_kind),intent(in)  :: tracers(np*np,qsize)
-    real (kind=real_kind),intent(out) :: f(qsize)
+    real (kind=r8),intent(in)  :: tracers(np*np,qsize)
+    real (kind=r8),intent(out) :: f(qsize)
 
     type (quadrature_t        )       :: gll        
-    real (kind=real_kind      )       :: dp    (np)
-    real (kind=real_kind      )       :: x     (np)
-    real (kind=real_kind      )       :: y     (np)
-    real (kind=real_kind      )       :: c     (np,np)
-    real (kind=real_kind      )       :: xy    (np*np)
+    real (kind=r8      )       :: dp    (np)
+    real (kind=r8      )       :: x     (np)
+    real (kind=r8      )       :: y     (np)
+    real (kind=r8      )       :: c     (np,np)
+    real (kind=r8      )       :: xy    (np*np)
 
     integer                           :: i,j
     logical                           :: first_time=.true.
@@ -267,12 +262,12 @@ contains
             dp(i) = dp(i) * (gll%points(i) - gll%points(j))
           end if
         end do
-      end do 
+      end do
       do i=1,np
         do j=1,np
           c(i,j) = 1/(dp(i)*dp(j))
         end do
-      end do 
+      end do
     end if
 
     x = 1
@@ -284,40 +279,42 @@ contains
           y(i) = y(i) * (r%y - gll%points(j))
         end if
       end do
-    end do 
-    do j=1,np  
+    end do
+
+    do j=1,np
       do i=1,np
         xy(i + (j-1)*np) = x(i)*y(j)*c(i,j)
       end do
-    end do 
+    end do
     f = MATMUL(xy,tracers)
   end subroutine interpolate_tracers
 
-  function linear_interpolate_2d(x,y,s) result(v)
-    use dimensions_mod, only : np, qsize
-    use kinds, only : longdouble_kind
 
-    implicit none
-    real (kind=longdouble_kind),intent(in)  :: x(np)
-    real (kind=real_kind),intent(in)  :: y(np,np,qsize)
-    type (cartesian2D_t), intent(in)  :: s        
+
+  subroutine linear_interpolate_2d(x,y,s,v)
+    use dimensions_mod, only : np, qsize
+
+    real(kind=r8) ,       intent(in) :: x(np)
+    real(kind=r8),        intent(in) :: y(np,np,qsize)
+    type (cartesian2D_t), intent(in) :: s
+    real(kind=r8),        intent(inout) :: v(qsize)
 
     integer                           :: i,j,q
-    real (kind=real_kind)  dx, dy(qsize), dydx(qsize), v(qsize)
-    real (kind=real_kind)  y0(qsize), y1(qsize)
+    real (kind=r8)  dx, dy(qsize), dydx(qsize)
+    real (kind=r8)  y0(qsize), y1(qsize)
     type (cartesian2D_t)              :: r
- 
+
     r = s
     if (r%x < -1) r%x = -1
     if (r%y < -1) r%y = -1
     if ( 1 < r%x) r%x =  1
     if ( 1 < r%y) r%y =  1
-    do i=1,np  
+    do i=1,np
       if (r%x < x(i)) exit
-    end do 
-    do j=1,np  
+    end do
+    do j=1,np
       if (r%y < x(j)) exit
-    end do 
+    end do
     if (1 < i) i = i-1
     if (1 < j) j = j-1
     if (np==i) i = i-1
@@ -326,20 +323,20 @@ contains
     dx = x(i+1)     - x(i)
     dy = y(i+1,j,:) - y(i,j,:)
     dydx = dy/dx
-    y0 = y(i,j,:) + (r%x-x(i))*dydx 
-    
+    y0 = y(i,j,:) + (r%x-x(i))*dydx
+
     dy = y(i+1,j+1,:) - y(i,j+1,:)
     dydx = dy/dx
-    y1 = y(i,j+1,:) + (r%x-x(i))*dydx 
+    y1 = y(i,j+1,:) + (r%x-x(i))*dydx
 
     dx = x(j+1)     - x(j)
-    dy = y1         - y0          
+    dy = y1         - y0
     dydx = dy/dx
-    v  = y0         + (r%y-x(j))*dydx 
+    v  = y0         + (r%y-x(j))*dydx
 
-  end function linear_interpolate_2d
+  end subroutine linear_interpolate_2d
 
-  subroutine minmax_tracers(r, tracers, mint, maxt) 
+  subroutine minmax_tracers(r, tracers, mint, maxt)
     use dimensions_mod, only : np, qsize
     use quadrature_mod, only : quadrature_t, gausslobatto
 
@@ -347,32 +344,32 @@ contains
     implicit none
 
     type (cartesian2D_t), intent(in)  :: r
-    real (kind=real_kind),intent(in)  :: tracers(np,np,qsize)
-    real (kind=real_kind),intent(out) :: mint         (qsize)
-    real (kind=real_kind),intent(out) :: maxt         (qsize)
+    real (kind=r8),intent(in)  :: tracers(np,np,qsize)
+    real (kind=r8),intent(out) :: mint         (qsize)
+    real (kind=r8),intent(out) :: maxt         (qsize)
 
-    type (quadrature_t), save         :: gll        
+    type (quadrature_t), save         :: gll
     integer                           :: i,j
     logical            , save         :: first_time=.true.
-    real (kind=real_kind)             :: y1           (qsize)
-    real (kind=real_kind)             :: y2           (qsize)
-    real (kind=real_kind)             :: q_interp     (4,qsize)
+    real (kind=r8)             :: y1           (qsize)
+    real (kind=r8)             :: y2           (qsize)
+    real (kind=r8)             :: q_interp     (4,qsize)
     type (cartesian2D_t)              :: s
-    real (kind=real_kind)             :: delta
+    real (kind=r8)             :: delta
     
-    delta = 1.D0/8.D0
+    delta = 1._r8/8._r8
 
     if (first_time) then
       first_time = .false.
       gll=gausslobatto(np)
     end if
 
-    do i=1,np  
+    do i=1,np
       if (r%x < gll%points(i)) exit
-    end do 
-    do j=1,np  
+    end do
+    do j=1,np
       if (r%y < gll%points(j)) exit
-    end do 
+    end do
     if (1 < i) i = i-1
     if (1 < j) j = j-1
     if (np==i) i = i-1
@@ -385,19 +382,19 @@ contains
     s   = r
     s%x = s%x - delta
     s%y = s%y - delta
-    q_interp(1,:) = linear_interpolate_2d(gll%points,tracers,s)
+    call linear_interpolate_2d(gll%points,tracers,s,q_interp(1,:))
     s   = r
     s%x = s%x + delta
     s%y = s%y - delta
-    q_interp(2,:) = linear_interpolate_2d(gll%points,tracers,s)
+    call linear_interpolate_2d(gll%points,tracers,s,q_interp(2,:))
     s   = r
     s%x = s%x - delta
     s%y = s%y + delta
-    q_interp(3,:) = linear_interpolate_2d(gll%points,tracers,s)
+    call linear_interpolate_2d(gll%points,tracers,s,q_interp(3,:))
     s   = r
     s%x = s%x + delta
     s%y = s%y + delta
-    q_interp(4,:) = linear_interpolate_2d(gll%points,tracers,s)
+    call linear_interpolate_2d(gll%points,tracers,s,q_interp(4,:))
 
     mint(:) = minval(q_interp(:,:),1)
     maxt(:) = maxval(q_interp(:,:),1)
@@ -406,15 +403,15 @@ contains
   function interpolate_2d(cart, f, interp, npts, fillvalue) result(fxy)
     integer, intent(in)               :: npts
     type (cartesian2D_t), intent(in)  :: cart
-    real (kind=real_kind), intent(in) :: f(npts,npts)
+    real (kind=r8), intent(in) :: f(npts,npts)
     type (interpolate_t)              :: interp
-    real (kind=real_kind)             :: fxy     ! value of f interpolated to (x,y)
-    real (kind=real_kind), intent(in), optional :: fillvalue
+    real (kind=r8)             :: fxy     ! value of f interpolated to (x,y)
+    real (kind=r8), intent(in), optional :: fillvalue
     ! local variables
 
-    real (kind=real_kind)             :: tmp_1,tmp_2
-    real (kind=real_kind)             :: fk0,fk1
-    real (kind=real_kind)             :: pk
+    real (kind=r8)             :: tmp_1,tmp_2
+    real (kind=r8)             :: fk0,fk1
+    real (kind=r8)             :: pk
 
     integer                           :: l,j,k
 
@@ -430,10 +427,10 @@ contains
 
        ! Compute Pk(cart%x) for Legendre order 0
 
-       pk = 1.0D0
+       pk = 1.0_r8
 
-       fk0=0.0D0
-       fk1=0.0D0
+       fk0=0.0_r8
+       fk1=0.0_r8
        do j=1,npts
           fk0 = fk0 + interp%Imat(j,1)*f(j,l  )
           fk1 = fk1 + interp%Imat(j,1)*f(j,l+1)
@@ -446,8 +443,8 @@ contains
        tmp_2 = pk
        pk    = cart%x
 
-       fk0=0.0D0
-       fk1=0.0D0
+       fk0=0.0_r8
+       fk1=0.0_r8
        do j=1,npts
           fk0 = fk0 + interp%Imat(j,2)*f(j,l  )
           fk1 = fk1 + interp%Imat(j,2)*f(j,l+1)
@@ -463,8 +460,8 @@ contains
           tmp_2  = pk
           pk = ( (2*k-1)*cart%x*tmp_2 - (k-1)*tmp_1 )*interp%rk(k)
 
-          fk0=0.0D0
-          fk1=0.0D0
+          fk0=0.0_r8
+          fk1=0.0_r8
           do j=1,npts
              fk0 = fk0 + interp%Imat(j,k+1)*f(j,l  )
              fk1 = fk1 + interp%Imat(j,k+1)*f(j,l+1)
@@ -478,9 +475,9 @@ contains
 
     ! Compute Pk(cart%y) for Legendre order 0
 
-    pk = 1.0
+    pk = 1.0_r8
 
-    fk0 = 0.0D0
+    fk0 = 0.0_r8
     do j=1,npts
        fk0 = fk0 + interp%Imat(j,1)*interp%vtemp(j)
     end do
@@ -491,7 +488,7 @@ contains
     tmp_2 = pk
     pk    = cart%y
 
-    fk0=0.0D0
+    fk0=0.0_r8
     do j=1,npts
        fk0 = fk0 + interp%Imat(j,2)*interp%vtemp(j)
     end do
@@ -504,7 +501,7 @@ contains
        tmp_2  = pk
        pk = ( (2*k-1)*cart%y*tmp_2 - (k-1)*tmp_1 )*interp%rk(k)
 
-       fk0 = 0.0D0
+       fk0 = 0.0_r8
        do j=1,npts
           fk0 = fk0 + interp%Imat(j,k+1)*interp%vtemp(j)
        end do
@@ -523,14 +520,14 @@ contains
 
     integer, intent(in)               :: npts
     type (cartesian2D_t), intent(in)  :: cart
-    real (kind=real_kind), intent(in) :: f(npts,npts)
+    real (kind=r8), intent(in) :: f(npts,npts)
     type (interpolate_t)              :: interp
-    real (kind=real_kind)             :: fxy     ! value of f interpolated to (x,y)
-    real (kind=real_kind), intent(in), optional :: fillvalue
+    real (kind=r8)             :: fxy     ! value of f interpolated to (x,y)
+    real (kind=r8), intent(in), optional :: fillvalue
     ! local variables
 
-    real (kind=real_kind)             :: xoy(npts)
-    real (kind=real_kind)             :: p,q,xp,yp ,y4(4)
+    real (kind=r8)             :: xoy(npts)
+    real (kind=r8)             :: p,q,xp,yp ,y4(4)
 
     integer                           :: l,j,k, ii, jj, na,nb,nm
 
@@ -585,8 +582,8 @@ contains
        p = (xp - xoy(ii))/(xoy(ii+1) - xoy(ii))
        q = (yp - xoy(jj))/(xoy(jj+1) - xoy(jj))
 
-       fxy = (1.0D0 - p)*(1.0D0 - q)* y4(1) + p*(1.0D0 - q) * y4(2)   &
-            + p*q* y4(3) + (1.0D0 - p)*q * y4(4)
+       fxy = (1.0_r8 - p)*(1.0_r8 - q)* y4(1) + p*(1.0_r8 - q) * y4(2)   &
+            + p*q* y4(3) + (1.0_r8 - p)*q * y4(4)
 
   end function interpol_bilinear
 
@@ -599,14 +596,14 @@ contains
     integer,optional  :: ref_map_in    ! default is global variable 'cubed_sphere_map'
     ! optional arguments, only needed for ref_map=1 (equi-angle gnomonic projection):
     type (cartesian2D_t),optional   :: corners(4)    ! gnomonic coords of element corners
-    real (kind=real_kind),optional  :: u2qmap(4,2)   
+    real (kind=r8),optional  :: u2qmap(4,2)
     integer,optional  :: facenum
 
 
     ! local
     integer               :: i, MAX_NR_ITER=10
-    real(kind=real_kind)  :: D(2,2),Dinv(2,2),detD,a,b,resa,resb,dela,delb,costh
-    real(kind=real_kind)  :: tol_sq=1e-26
+    real(kind=r8)  :: D(2,2),Dinv(2,2),detD,a,b,resa,resb,dela,delb,costh
+    real(kind=r8)  :: tol_sq = 1.0e-26_r8
     type (spherical_polar_t) :: sphere1, sphere_tmp
     integer  :: ref_map
 
@@ -617,13 +614,13 @@ contains
     ! with no assumption as to the type of map (gnomonic, equi-angular, parametric)
     !
     ! f = ref2sphere(xvec) - sphere
-    ! df = d(ref2sphere) 
+    ! df = d(ref2sphere)
     !
     ! D = diag(cos(theta),1) * d(ref2sphere)       d(ref2sphere) = diag(1/cos(theta),1)*D
-    ! 
-    ! df = diag(1/cos(theta),1)*D 
+    !
+    ! df = diag(1/cos(theta),1)*D
     ! df^-1 =  D^-1 *  diag(cos(theta),1)
-    ! 
+    !
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     if (present(ref_map_in)) then
        ref_map=ref_map_in
@@ -637,20 +634,20 @@ contains
     do
        sphere1 = ref2sphere(a,b,corners3D,ref_map,corners,facenum)
        resa = sphere1%lon - sphere%lon
-       if (resa>dd_pi) resa=resa-2*dd_pi
-       if (resa<-dd_pi) resa=resa+2*dd_pi
+       if (resa >  pi) resa= resa - 2*pi
+       if (resa < -pi) resa= resa + 2*pi
 
-       resb = sphere1%lat - sphere%lat 
+       resb = sphere1%lat - sphere%lat
 
        call Dmap(D,a,b,corners3D,ref_map,corners,u2qmap,facenum)
-       detD = D(1,1)*D(2,2) - D(1,2)*D(2,1)      
+       detD = D(1,1)*D(2,2) - D(1,2)*D(2,1)
        Dinv(1,1) =  D(2,2)/detD
        Dinv(1,2) = -D(1,2)/detD
        Dinv(2,1) = -D(2,1)/detD
        Dinv(2,2) =  D(1,1)/detD
-       
-       dela =  Dinv(1,1)*costh*resa + Dinv(1,2)*resb 
-       delb =  Dinv(2,1)*costh*resa + Dinv(2,2)*resb 
+
+       dela =  Dinv(1,1)*costh*resa + Dinv(1,2)*resb
+       delb =  Dinv(2,1)*costh*resa + Dinv(2,2)*resb
        a = a - dela
        b = b - delb
        i=i+1
@@ -678,10 +675,10 @@ contains
     integer               :: i,j
     type (cartesian2D_t) :: corners(4),sphere_xy,cart
     type (cartesian3D_t) :: corners_xyz(4),center,a,b,cross(4)
-    real (kind=real_kind) :: yp(4), y, elem_diam,dotprod
-    real (kind=real_kind) :: xp(4), x, xc,yc
-    real (kind=real_kind) :: tol_inside
-    real (kind=real_kind) :: d1,d2
+    real (kind=r8) :: yp(4), y, elem_diam,dotprod
+    real (kind=r8) :: xp(4), x, xc,yc
+    real (kind=r8) :: tol_inside
+    real (kind=r8) :: d1,d2
 
     type (spherical_polar_t)    :: sphere_tmp
 
@@ -696,9 +693,9 @@ contains
     center%x = sum(corners_xyz(1:4)%x)/4
     center%y = sum(corners_xyz(1:4)%y)/4
     center%z = sum(corners_xyz(1:4)%z)/4
-    if ( distance(center,sphere_xyz) > 1.0*elem_diam ) return
+    if ( distance(center,sphere_xyz) > 1.0_r8*elem_diam ) return
 
-    tol_inside = 1e-10*elem_diam**2
+    tol_inside = 1.0e-10_r8*elem_diam**2
     ! the point is close to the element, so project both to cubed sphere
     ! and perform contour integral
     sphere_xy=sphere2cubedsphere(sphere,elem%FaceNum)
@@ -736,7 +733,7 @@ contains
        end do
     endif
 
-    
+
     j = 4
     do i=1,4
       ! a = x-xp(j), y-yp(j)
@@ -765,9 +762,9 @@ contains
     integer               :: i,j,ii
     type (cartesian2D_t) :: corners(4),sphere_xy,cart
     type (cartesian3D_t) :: center,a,b,cross(4)
-    real (kind=real_kind) :: yp(4), y, elem_diam,dotprod
-    real (kind=real_kind) :: xp(4), x
-    real (kind=real_kind) :: d1,d2, tol_inside = 1e-12
+    real (kind=r8) :: yp(4), y, elem_diam,dotprod
+    real (kind=r8) :: xp(4), x
+    real (kind=r8) :: d1,d2, tol_inside = 1.0e-12_r8
 
     type (spherical_polar_t)   :: sphere  ! debug
 
@@ -780,7 +777,7 @@ contains
     center%x = sum(corners_xyz(1:4)%x)/4
     center%y = sum(corners_xyz(1:4)%y)/4
     center%z = sum(corners_xyz(1:4)%z)/4
-    if ( distance(center,sphere_xyz) > 1.0*elem_diam ) return
+    if ( distance(center,sphere_xyz) > 1.0_r8*elem_diam ) return
 
     j = 4
     do i=1,4
@@ -794,9 +791,9 @@ contains
        j = i  ! within this loopk j = i-1
 
        ! dot product is proportional to elem_diam. positive means outside,
-       ! but allow machine precision tolorence: 
-       if (dotprod > tol_inside*elem_diam) return 
-       !if (dotprod > 0) return 
+       ! but allow machine precision tolorence:
+       if (dotprod > tol_inside*elem_diam) return
+       !if (dotprod > 0) return
     end do
     inside=.true.
     return
@@ -815,9 +812,9 @@ contains
     integer               :: i,j,ii
     type (cartesian2D_t) :: corners(4),sphere_xy,cart
     type (cartesian3D_t) :: corners_xyz(4),center,a,b,cross(4)
-    real (kind=real_kind) :: yp(4), y, elem_diam,dotprod
-    real (kind=real_kind) :: xp(4), x
-    real (kind=real_kind) :: d1,d2, tol_inside = 1e-12
+    real (kind=r8) :: yp(4), y, elem_diam,dotprod
+    real (kind=r8) :: xp(4), x
+    real (kind=r8) :: d1,d2, tol_inside = 1.0e-12_r8
 
     type (spherical_polar_t)   :: sphere  ! debug
 
@@ -831,60 +828,7 @@ contains
     center%x = sum(corners_xyz(1:4)%x)/4
     center%y = sum(corners_xyz(1:4)%y)/4
     center%z = sum(corners_xyz(1:4)%z)/4
-    if ( distance(center,sphere_xyz) > 1.0*elem_diam ) return
-
-
-#if 0
-    ! sanity check: see if center is inside element
-    !       2 1
-    !       3 4      (1) x (4) = outward normal
-    !                 dot product with centroid should be negative (inside)
-    j = 4
-    do i=1,4
-      ! outward normal to plane containing j->i edge:  corner(i) x corner(j)
-      ! sphere dot (corner(i) x corner(j) ) = negative if on left (inside for counterclockwise)
-      !                                       positive if on right 
-      !
-       cross(i)%x =  corners_xyz(i)%y*corners_xyz(j)%z - corners_xyz(i)%z*corners_xyz(j)%y
-       cross(i)%y =-(corners_xyz(i)%x*corners_xyz(j)%z - corners_xyz(i)%z*corners_xyz(j)%x)
-       cross(i)%z =  corners_xyz(i)%x*corners_xyz(j)%y - corners_xyz(i)%y*corners_xyz(j)%x
-       dotprod = cross(i)%x*center%x + cross(i)%y*center%y +&
-               cross(i)%z*center%z
-       j = i  ! within this loopk j = i-1
-       if (dotprod>0) then
-          print *,'i,dotprod=',i,dotprod
-          print *,'error: center is outside element. face=',elem%facenum
-          print *,'corner (cubedsphere)'
-          do ii=1,4
-             print *,elem%corners(ii)%x,elem%corners(ii)%y
-          enddo
-          sphere=change_coordinates(center)
-          print *,'center lon,lat: ',sphere%lon,sphere%lat
-          do ii=1,4
-             sphere=projectpoint(elem%corners(ii),elem%facenum)
-             print *,sphere%lon,sphere%lat
-          enddo
-          print *,'test point'
-          cart%x = -3.1459/4
-          cart%y = 0
-          sphere=projectpoint(cart,5)
-        !  print *,'0,0 ->lon,lat: ',sphere%lon,sphere%lat
-          cart%x = -3.1459/4 + .1
-          cart%y = 0
-          sphere=projectpoint(cart,5)
-        !  print *,'+1,0 ->lon,lat: ',sphere%lon,sphere%lat
-          cart%x = -3.1459/4 + .1
-          cart%y  =0 + .1
-          sphere=projectpoint(cart,5)
-        !  print *,'+1,+1 ->lon,lat: ',sphere%lon,sphere%lat
-          cart%x = -3.1459/4 
-          cart%y  = 0 + .1
-          sphere=projectpoint(cart,5)
-        !  print *,'+1,+1 ->lon,lat: ',sphere%lon,sphere%lat
-
-       endif
-    end do
-#endif
+    if ( distance(center,sphere_xyz) > 1.0_r8*elem_diam ) return
 
     j = 4
     do i=1,4
@@ -900,34 +844,32 @@ contains
        !if (dotprod>0 .and. dotprod/elem_diam < 1e-5) print *,dotprod/elem_diam
 
        ! dot product is proportional to elem_diam. positive means outside,
-       ! but allow machine precision tolorence: 
-       if (dotprod > tol_inside*elem_diam) return 
-       !if (dotprod > 0) return 
+       ! but allow machine precision tolorence:
+       if (dotprod > tol_inside*elem_diam) return
+       !if (dotprod > 0) return
     end do
     inside=.true.
     return
   end function point_inside_gc
 
 
-
   !================================================
   !  (Nair) Cube face index and local coordinates
   !================================================
 
-  subroutine cube_facepoint_ne(sphere,ne,cart, number)
+  subroutine cube_facepoint_ne(sphere, ne, cart, number)
     use coordinate_systems_mod, only : cube_face_number_from_sphere, sphere2cubedsphere
-    implicit none
 
-    type (spherical_polar_t), intent (in) :: sphere
-    integer             , intent(in)      :: ne
-    type (cartesian2D_t), intent(out)     :: cart
-    integer             , intent(out)     :: number
+    type(spherical_polar_t), intent(in)  :: sphere
+    integer,                 intent(in)  :: ne
+    type(cartesian2D_t),     intent(out) :: cart
+    integer,                 intent(out) :: number
 
-    real (kind=real_kind) :: xp,yp
-    type (cartesian2D_t)  :: cube
-    integer               :: ie, je, face_no
-    real (kind=real_kind) :: x1,x2
-    real (kind=real_kind) :: dx
+    real(kind=r8)       :: xp, yp
+    type(cartesian2D_t) :: cube
+    integer             :: ie, je, face_no
+    real(kind=r8)       :: x1, x2
+    real(kind=r8)       :: dx
 
     face_no = cube_face_number_from_sphere(sphere)
     cube    = sphere2cubedsphere(sphere, face_no)
@@ -935,22 +877,26 @@ contains
     yp      = cube%y
 
     ! MNL: for uniform grids (on cube face), analytic solution is fine
-    x1 = xp + 0.25D0*DD_PI
-    x2 = yp + 0.25D0*DD_PI
+    x1 = xp + 0.25_r8*PI
+    x2 = yp + 0.25_r8*PI
 
-    dx = (0.5D0*DD_PI)/ne
+    dx = (0.5_r8*PI)/ne
     ie = INT(ABS(x1)/dx)
     je = INT(ABS(x2)/dx)
     ! if we are exactly on an element edge, we can put the point in
     ! either the ie or ie+1 element, EXCEPT if ie==ne.
-    if ( ABS(x1) < ne*dx  ) ie=ie+1
-    if ( ABS(x2) < ne*dx  ) je=je+1
-    if (ie>ne .or. je>ne) then
-       write(iulog,*)'ERROR: ',ie,je,ne
-       write(iulog,*)'lat,lon=',sphere%lat,sphere%lon
-       write(iulog,*)'face no=',face_no
-       write(iulog,*)x1,x2,x1/dx,x2/dx
-       call abortmp('interpolate_mod: bad argument')
+    if ( ABS(x1) < ne*dx  ) then
+      ie = ie + 1
+    end if
+    if ( ABS(x2) < ne*dx  ) then
+      je = je + 1
+    end if
+    if ((ie > ne) .or. (je > ne)) then
+      write(iulog, *) 'ERROR: ',ie,je,ne
+      write(iulog, *) 'lat,lon=',sphere%lat,sphere%lon
+      write(iulog, *) 'face no=',face_no
+      write(iulog, *) x1,x2,x1/dx,x2/dx
+      call endrun('interpolate_mod: bad argument')
     endif
 
     ! bug fix MT 1/2009.  This was creating a plotting error at
@@ -963,13 +909,13 @@ contains
     x1 = x1 - dble(ie-1)*dx
     !    endif
 
-    x1 = 2.0D0*(x1/dx)-1.0D0
+    x1 = 2.0_r8*(x1/dx)-1.0_r8
 
     !    if (x2 > dx ) then    ! removed MT 1/2009, see above
     x2 = x2 - dble(je-1)*dx
     !    endif
 
-    x2 = 2.0D0*(x2/dx)-1.0D0
+    x2 = 2.0_r8*(x2/dx)-1.0_r8
 
     ! coordinates within an element [-1,1]
     cart%x = x1
@@ -1004,7 +950,7 @@ contains
        ! unstructed grid element edges are NOT great circles
        if (cubed_sphere_map==0) then
           found = point_inside_equiangular(elem(ii), sphere, sphere_xyz)
-       else 
+       else
           ! assume element edges are great circle arcs:
           found = point_inside_gc(elem(ii), sphere_xyz)
        endif
@@ -1044,8 +990,8 @@ contains
     integer countx, missing_pts,ierr
     integer :: npts_mult_claims,max_claims
 
-    real (kind=real_kind)    ::  dp,latdeg(nlat+1),clat(nlat+1),w(nlat+1),w_staggered(nlat)
-    real (kind=real_kind)    ::  clat_staggered(nlat),latdeg_st(nlat),err,err2
+    real (kind=r8)    ::  dp,latdeg(nlat+1),clat(nlat+1),w(nlat+1),w_staggered(nlat)
+    real (kind=r8)    ::  clat_staggered(nlat),latdeg_st(nlat),err,err2
 
     type (spherical_polar_t) :: sphere
     type (cartesian2D_t)     :: cart
@@ -1053,8 +999,6 @@ contains
 
     type (quadrature_t)       :: gp
 
-
-    logical,save                                  :: first_time=.TRUE.
 
     ! Array to make sure each interp point is on exactly one process
     type (cartesian2D_t),allocatable    :: cart_vec(:,:)
@@ -1076,22 +1020,18 @@ contains
        interpdata(ii)%n_interp=0  ! reset counter
     enddo
 
-    if(first_time)then
-       NULLIFY(lat)
-       NULLIFY(gweight)
-       NULLIFY(lon)
-       first_time=.FALSE.
-    end if
-
     if (associated(lat))then
-       if(size(lat)>0)deallocate(lat)
+       deallocate(lat)
+       nullify(lat)
     endif
     if (associated(gweight))then
-       if(size(gweight)>0)deallocate(gweight)
+       deallocate(gweight)
+       nullify(gweight)
     endif
 
     if (associated(lon))then
-       if(size(lon)>0)deallocate(lon)
+       deallocate(lon)
+       nullify(lon)
     endif
 
     allocate(lat(nlat))
@@ -1100,11 +1040,11 @@ contains
     call interp_init()
     gweight=0
     do i=1,nlon
-       lon(i)=2*dd_pi*(i-1)/nlon
+       lon(i)=2*pi*(i-1)/nlon
     enddo
     if (gridtype==1) then
        do j=1,nlat
-          lat(j) = -dd_pi/2 + dd_pi*(j-1)/(nlat-1)
+          lat(j) = -pi/2 + pi*(j-1)/(nlat-1)
        end do
        plat=nlat
     endif
@@ -1117,7 +1057,7 @@ contains
     endif
     if (gridtype==3) then
        do j=1,nlat
-          lat(j) = -dd_pi/2 + dd_pi*(j-.5d0)/nlat
+          lat(j) = -pi/2 + pi*(j-.5_r8)/nlat
        end do
        plat=nlat+1
     endif
@@ -1128,17 +1068,17 @@ contains
 
        ! L-R dynamics uses a regular latitude distribution (not gausian).
        ! The algorithm below is a bastardized version of LSM: map.F.
-       dp = 180d0/(plat-1)
+       dp = 180.0_r8/(plat-1)
        do j = 1, plat
-          latdeg(j) = -90d0 + (j-1)*dp
-          clat(j) = latdeg(j)*dd_pi/180d0
+          latdeg(j) = -90.0_r8 + (j-1)*dp
+          clat(j) = latdeg(j)*pi/180.0_r8
        end do
 
        ! Calculate latitudes for the staggered grid
 
        do j = 1, plat-1
           clat_staggered(j) = (clat(j) + clat(j+1)) / 2
-          latdeg_st     (j) = clat_staggered(j)*180d0/dd_pi
+          latdeg_st     (j) = clat_staggered(j)*180.0_r8/pi
        end do
 
        ! Weights are defined as cos(phi)*(delta-phi)
@@ -1152,20 +1092,20 @@ contains
        w(plat) = w(1)
 
        ! with nlat=2048, this error was 4e-16
-       if (abs(sum(w(1:plat)) - 2) > 1e-8) then
+       if (abs(sum(w(1:plat)) - 2) > 1.0e-8_r8) then
           write(iulog,*) 'interpolate_mod: w weights do not sum to 2. sum=',sum(w(1:plat))
-          call abortmp('interpolate_mod: weights do not sum to 2.')
+          call endrun('interpolate_mod: weights do not sum to 2.')
        end if
 
-       dp = dd_pi / (plat-1)
+       dp = pi / (plat-1)
        do j = 1, plat-1
           w_staggered(j) = sin(clat(j+1)) - sin(clat(j))
        end do
 
 
-       if (abs(sum(w_staggered(1:plat-1)) - 2) > 1e-8) then
+       if (abs(sum(w_staggered(1:plat-1)) - 2) > 1.0e-8_r8) then
           write(iulog,*) 'interpolate_mod: staggered weights do not sum to 2. sum=',sum(w_staggered(1:plat-1))
-          call abortmp('interpolate_mod: weights do not sum to 2.')
+          call endrun('interpolate_mod: weights do not sum to 2.')
        end if
 
        if (gridtype==1) then
@@ -1188,17 +1128,15 @@ contains
           sphere%lat=lat(j)
           sphere%lon=lon(i)
 
-          !debug=.false.
-          !if (j==18 .and. i==95) debug=.true.
           number = -1
           if ( (cubed_sphere_map /= 0) .or. MeshUseMeshFile) then
              call cube_facepoint_unstructured(sphere, cart, number, elem)
              if (number /= -1) then
                 ! If points are outside element but within tolerance, move to boundary
-                if (cart%x + 1.0d0.le.0.0d0) cart%x = -1.0d0
-                if (cart%x - 1.0d0.ge.0.0d0) cart%x = 1.0d0
-                if (cart%y + 1.0d0.le.0.0d0) cart%y = -1.0d0
-                if (cart%y - 1.0d0.ge.0.0d0) cart%y = 1.0d0
+                if (cart%x + 1.0_r8.le.0.0_r8) cart%x = -1.0_r8
+                if (cart%x - 1.0_r8.ge.0.0_r8) cart%x = 1.0_r8
+                if (cart%y + 1.0_r8.le.0.0_r8) cart%y = -1.0_r8
+                if (cart%y - 1.0_r8.ge.0.0_r8) cart%y = 1.0_r8
 
                 local_elem_num(j,i) = number
                 local_elem_gid(j,i) = elem(number)%vertex%number
@@ -1236,18 +1174,14 @@ contains
        endif
     enddo
     err2=err
-#ifdef _MPI
-    call MPI_Allreduce(err,err2,1,MPIreal_t,MPI_MAX,par%comm,ierr)
-#endif
+    call MPI_Allreduce(err, err2, 1, MPI_real8, MPI_MAX, par%comm, ierr)
     if (par%masterproc) then
        write(iulog,'(a,e12.4)') 'Max interpolation point search error: ',err2
     endif
 
     ! if multile elements claim a interpolation point, take the one with largest gid:
     global_elem_gid = local_elem_gid
-#ifdef _MPI
-    call MPI_Allreduce(local_elem_gid, global_elem_gid, nlat*nlon, MPIinteger_t, MPI_MAX, par%comm,ierr)
-#endif
+    call MPI_Allreduce(local_elem_gid, global_elem_gid, nlat*nlon, MPI_integer, MPI_MAX, par%comm,ierr)
 
     missing_pts=0
     do j=1,nlat
@@ -1265,9 +1199,7 @@ contains
 
     countx=maxval(interpdata(1:nelemd)%n_interp)
     count_max = countx
-#ifdef _MPI
-    call MPI_Allreduce(countx,count_max,1,MPIinteger_t,MPI_MAX,par%comm,ierr)
-#endif
+    call MPI_Allreduce(countx,count_max,1,MPI_integer,MPI_MAX,par%comm,ierr)
 
     if (par%masterproc) then
        write(iulog,'(a,i6)') 'Maximum number of interpolation points claimed by an element: ',count_max
@@ -1324,9 +1256,7 @@ contains
        enddo
     enddo
     global_elem_gid = local_elem_gid
-#ifdef _MPI
-    call MPI_Allreduce(local_elem_gid, global_elem_gid, nlat*nlon, MPIinteger_t, MPI_SUM, par%comm,ierr)
-#endif
+    call MPI_Allreduce(local_elem_gid, global_elem_gid, nlat*nlon, MPI_integer, MPI_SUM, par%comm,ierr)
     if (par%masterproc) then
        countx=0
        do j=1,nlat
@@ -1342,7 +1272,7 @@ contains
        print *,'Number of interpolation points claimed by more than one element: ',npts_mult_claims
        print *,'max number of elements which claimed the same interpolation point:',max_claims
     endif
-    
+
     deallocate(global_elem_gid)
     deallocate(local_elem_num)
     deallocate(local_elem_gid)
@@ -1355,7 +1285,7 @@ contains
           write(iulog,"(3A,I4,A,I7,a,i5)")"Error:",__FILE__," ",__LINE__," count_total:",count_total," missing:",missing_pts
        end if
        call syncmp(par)
-       call abortmp('Error: interpolation points not claimed by any element')
+       call endrun('Error: interpolation points not claimed by any element')
     endif
 
 
@@ -1373,21 +1303,19 @@ contains
 subroutine interpolate_ce(cart,fld_cube,npts,fld, fillvalue)
   type (cartesian2D_t) :: cart
   integer                  ::  npts
-  real (kind=real_kind)    ::  fld_cube(npts,npts) ! cube field
-  real (kind=real_kind)    ::  fld          ! field at new grid lat,lon coordinates
-  real (kind=real_kind), intent(in), optional :: fillvalue
+  real (kind=r8)    ::  fld_cube(npts,npts) ! cube field
+  real (kind=r8)    ::  fld          ! field at new grid lat,lon coordinates
+  real (kind=r8), intent(in), optional :: fillvalue
   ! Local variables
   type (interpolate_t), pointer  ::  interp          ! interpolation structure
 
   integer :: ne
-
   integer :: i
-
 
   if (npts==np) then
      interp => interp_p
   else
-     call abortmp('Error in interpolate_scalar(): must be called with p or v grid data')
+     call endrun('Error in interpolate_scalar(): must be called with p or v grid data')
   endif
 
   fld=interpolate_2d(cart,fld_cube,interp,npts,fillvalue)
@@ -1405,11 +1333,12 @@ end subroutine interpolate_ce
   ! Note that it is possible the given element contains none of the interpolation points
   ! =======================================
   subroutine interpolate_scalar2d(interpdata,fld_cube,npts,fld, fillvalue)
-    integer                  ::  npts
-    real (kind=real_kind)    ::  fld_cube(npts,npts) ! cube field
-    real (kind=real_kind)    ::  fld(:)          ! field at new grid lat,lon coordinates
-    type (interpdata_t)         ::  interpdata
-    real (kind=real_kind), intent(in), optional :: fillvalue
+
+    integer,             intent(in) ::  npts
+    real (kind=r8),      intent(in) ::  fld_cube(npts,npts) ! cube field
+    real (kind=r8),      intent(out)::  fld(:)          ! field at new grid lat,lon coordinates
+    type (interpdata_t), intent(in) ::  interpdata
+    real (kind=r8),      intent(in), optional :: fillvalue
     ! Local variables
     type (interpolate_t), pointer  ::  interp          ! interpolation structure
 
@@ -1422,7 +1351,7 @@ end subroutine interpolate_ce
     if (npts==np) then
        interp => interp_p
     else
-       call abortmp('Error in interpolate_scalar(): must be called with p or v grid data')
+      call endrun('Error in interpolate_scalar(): must be called with p or v grid data')
     endif
 
        ! Choice for Native (high-order) or Bilinear interpolations
@@ -1451,11 +1380,12 @@ end subroutine interpolate_ce
 
   end subroutine interpolate_scalar2d
   subroutine interpolate_scalar3d(interpdata,fld_cube,npts,nlev,fld, fillvalue)
-    integer , intent(in)                 ::  npts, nlev
-    real (kind=real_kind)    ::  fld_cube(npts,npts,nlev) ! cube field
-    real (kind=real_kind)    ::  fld(:,:)          ! field at new grid lat,lon coordinates
-    type (interpdata_t)         ::  interpdata
-    real (kind=real_kind), intent(in), optional :: fillvalue
+
+    integer ,            intent(in)  ::  npts, nlev
+    real (kind=r8),      intent(in)  ::  fld_cube(npts,npts,nlev) ! cube field
+    real (kind=r8),      intent(out) ::  fld(:,:)          ! field at new grid lat,lon coordinates
+    type (interpdata_t), intent(in)  ::  interpdata
+    real (kind=r8), intent(in), optional :: fillvalue
     ! Local variables
     type (interpolate_t), pointer  ::  interp          ! interpolation structure
 
@@ -1468,7 +1398,7 @@ end subroutine interpolate_ce
     if (npts==np) then
        interp => interp_p
     else
-       call abortmp('Error in interpolate_scalar(): must be called with p or v grid data')
+      call endrun('Error in interpolate_scalar(): must be called with p or v grid data')
     endif
 
     ! Choice for Native (high-order) or Bilinear interpolations
@@ -1501,11 +1431,10 @@ end subroutine interpolate_ce
           end do
        else
           write(iulog,*) itype
-          call abortmp("wrong interpolation type")
+          call endrun("wrong interpolation type")
        endif
     endif
   end subroutine interpolate_scalar3d
-
 
 
   ! =======================================
@@ -1522,21 +1451,21 @@ end subroutine interpolate_ce
   subroutine interpolate_vector2d(interpdata,elem,fld_cube,npts,fld,input_coords, fillvalue)
     implicit none
     integer                  ::  npts
-    real (kind=real_kind)    ::  fld_cube(npts,npts,2) ! vector field
-    real (kind=real_kind)    ::  fld(:,:)          ! field at new grid lat,lon coordinates
+    real (kind=r8)    ::  fld_cube(npts,npts,2) ! vector field
+    real (kind=r8)    ::  fld(:,:)          ! field at new grid lat,lon coordinates
     type (interpdata_t)      ::  interpdata
     type (element_t), intent(in)         :: elem
-    real (kind=real_kind), intent(in), optional :: fillvalue
+    real (kind=r8), intent(in), optional :: fillvalue
     integer                  ::  input_coords
 
 
     ! Local variables
-    real (kind=real_kind)    ::  fld_contra(npts,npts,2) ! vector field
+    real (kind=r8)    ::  fld_contra(npts,npts,2) ! vector field
     type (interpolate_t), pointer  ::  interp          ! interpolation structure
 
-    real (kind=real_kind)    ::  v1,v2
-    real (kind=real_kind)    ::  D(2,2)   ! derivative of gnomonic mapping
-    real (kind=real_kind)    ::  JJ(2,2), tmpD(2,2)   ! derivative of gnomonic mapping
+    real (kind=r8)    ::  v1,v2
+    real (kind=r8)    ::  D(2,2)   ! derivative of gnomonic mapping
+    real (kind=r8)    ::  JJ(2,2), tmpD(2,2)   ! derivative of gnomonic mapping
 
     integer :: i,j
 
@@ -1566,7 +1495,7 @@ end subroutine interpolate_ce
     if (npts==np) then
        interp => interp_p
     else if (npts==np) then
-       call abortmp('Error in interpolate_vector(): input must be on velocity grid')
+       call endrun('Error in interpolate_vector(): input must be on velocity grid')
     endif
 
 
@@ -1584,7 +1513,7 @@ end subroutine interpolate_ce
        end do
     else
        write(iulog,*) itype
-       call abortmp("wrong interpolation type")
+       call endrun("wrong interpolation type")
     endif
     do i=1,interpdata%n_interp
        ! convert fld from contra->latlon
@@ -1599,6 +1528,7 @@ end subroutine interpolate_ce
     end do
 
   end subroutine interpolate_vector2d
+
   ! =======================================
   ! interpolate_vector
   !
@@ -1615,18 +1545,18 @@ end subroutine interpolate_ce
     type (interpdata_t),intent(in)       ::  interpdata
     type (element_t), intent(in)         :: elem
     integer, intent(in)                  ::  npts, nlev
-    real (kind=real_kind), intent(in)    ::  fld_cube(npts,npts,2,nlev) ! vector field
-    real (kind=real_kind), intent(out)   ::  fld(:,:,:)          ! field at new grid lat,lon coordinates
-    real (kind=real_kind), intent(in),optional :: fillvalue
+    real (kind=r8), intent(in)    ::  fld_cube(npts,npts,2,nlev) ! vector field
+    real (kind=r8), intent(out)   ::  fld(:,:,:)          ! field at new grid lat,lon coordinates
+    real (kind=r8), intent(in),optional :: fillvalue
     integer, intent(in)                  ::  input_coords
 
     ! Local variables
-    real (kind=real_kind)    ::  fld_contra(npts,npts,2,nlev) ! vector field
+    real (kind=r8)    ::  fld_contra(npts,npts,2,nlev) ! vector field
     type (interpolate_t), pointer  ::  interp          ! interpolation structure
 
-    real (kind=real_kind)    ::  v1,v2
-    real (kind=real_kind)    ::  D(2,2)   ! derivative of gnomonic mapping
-    real (kind=real_kind)    ::  JJ(2,2), tmpD(2,2)   ! derivative of gnomonic mapping
+    real (kind=r8)    ::  v1,v2
+    real (kind=r8)    ::  D(2,2)   ! derivative of gnomonic mapping
+    real (kind=r8)    ::  JJ(2,2), tmpD(2,2)   ! derivative of gnomonic mapping
 
 
     integer :: i,j,k
@@ -1656,7 +1586,7 @@ end subroutine interpolate_ce
     if (npts==np) then
        interp => interp_p
     else if (npts==np) then
-       call abortmp('Error in interpolate_vector(): input must be on velocity grid')
+       call endrun('Error in interpolate_vector(): input must be on velocity grid')
     endif
 
 
@@ -1677,7 +1607,7 @@ end subroutine interpolate_ce
           end do
        end do
     else
-       call abortmp("wrong interpolation type")
+       call endrun("wrong interpolation type")
     endif
 
 

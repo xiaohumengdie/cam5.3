@@ -1,34 +1,26 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
 module parallel_mod
   ! ---------------------------
-  use kinds, only : real_kind, int_kind, iulog
+  use shr_kind_mod,   only: r8=>shr_kind_r8
   ! ---------------------------
   use dimensions_mod, only : nmpi_per_node, nlev, qsize_d
+  ! ---------------------------
+  use spmd_utils,     only: MPI_STATUS_SIZE, MPI_MAX_ERROR_STRING, MPI_TAG_UB
+  use cam_logfile,  only: iulog
 
   implicit none
-
   public 
-#ifdef _MPI
-#include <mpif.h>
-#endif
 
-  integer, parameter, public :: ORDERED = 1
-  integer, parameter, public :: FAST = 2
-  integer, parameter, public :: BNDRY_TAG_BASE = 0
-  integer, parameter, public :: THREAD_TAG_BITS = 9
-  integer, parameter, public :: MAX_ACTIVE_MSG = (MPI_TAG_UB/2**THREAD_TAG_BITS) - 1
-  integer, parameter, public :: HME_status_size = MPI_STATUS_SIZE
+  integer,  public, parameter   :: ORDERED         = 1
+  integer,  public, parameter   :: FAST            = 2
+  integer,  public, parameter   :: BNDRY_TAG_BASE  = 0
+  integer,  public, parameter   :: THREAD_TAG_BITS = 9
+  integer,  public, parameter   :: MAX_ACTIVE_MSG = (MPI_TAG_UB/2**THREAD_TAG_BITS) - 1
+  integer,  public, parameter   :: HME_status_size = MPI_STATUS_SIZE
 
-  integer, parameter, public :: HME_BNDRY_P2P   = 1
-  integer, parameter, public :: HME_BNDRY_MASHM = 2
-  integer, parameter, public :: HME_BNDRY_A2A   = 3
-  integer, parameter, public :: HME_BNDRY_A2AO  = 4
-  integer, parameter, public :: HME_BNDRY_GET1  = 5
-  integer, parameter, public :: HME_BNDRY_GET2  = 6
-  integer, parameter, public :: HME_BNDRY_PUT1  = 7
-  integer, parameter, public :: HME_BNDRY_PUT2  = 8
+  integer,  public, parameter   :: HME_BNDRY_P2P   = 1
+  integer,  public, parameter   :: HME_BNDRY_MASHM = 2
+  integer,  public, parameter   :: HME_BNDRY_A2A   = 3
+  integer,  public, parameter   :: HME_BNDRY_A2AO  = 4
 
   integer, parameter, public :: HME_MPATTERN_P  = 101
   integer, parameter, public :: HME_MPATTERN_S  = 102
@@ -42,15 +34,15 @@ module parallel_mod
   integer,      public :: iam
 
   ! Namelist-selectable type of boundary comms (AUTO,P2P,A2A,MASHM)
-  integer,      public :: boundaryCommMethod
+  integer,  public              :: boundaryCommMethod
 
-  integer,      public, allocatable    :: status(:,:)
-  integer,      public, allocatable    :: Rrequest(:)
-  integer,      public, allocatable    :: Srequest(:)
+  integer,  public, allocatable :: status(:,:)
+  integer,  public, allocatable :: Rrequest(:)
+  integer,  public, allocatable :: Srequest(:)
 
-  real(real_kind), public, allocatable :: FrameWeight(:)
-  integer,         public, allocatable :: FrameIndex(:)
-  integer,         public, allocatable :: FrameCount(:)
+  real(r8), public, allocatable :: FrameWeight(:)
+  integer,  public, allocatable :: FrameIndex(:)
+  integer,  public, allocatable :: FrameCount(:)
 
   ! ==================================================
   ! Define type parallel_t for distributed memory info
@@ -72,24 +64,17 @@ module parallel_mod
     integer :: commGraphInter
     integer :: commGraphIntra
     integer :: groupGraphFull
-    logical :: masterproc                 
+    logical :: masterproc
   end type
 
-#ifdef CAM
-  type (parallel_t)    :: par              ! parallel structure for distributed memory programming
-#endif
+  type (parallel_t), public :: par ! info for distributed memory programming
   integer, parameter :: nrepro_vars=MAX(10,nlev*qsize_d)
-  real(real_kind), public, allocatable :: global_shared_buf(:,:)
-  real(real_kind), public :: global_shared_sum(nrepro_vars)
+  real(r8), public, allocatable :: global_shared_buf(:,:)
+  real(r8), public :: global_shared_sum(nrepro_vars)
 
   ! ===================================================
   ! Module Interfaces
   ! ===================================================
-
-  interface assignment ( = )
-    module procedure copy_par
-  end interface
-
 
   public :: initmpi
   public :: haltmp
@@ -97,10 +82,11 @@ module parallel_mod
   public :: split
   public :: connect
   public :: syncmp
-  public :: psum_1d
-  public :: pmax_1d,pmin_1d
+  interface assignment ( = )
+    module procedure copy_par
+  end interface
 
-contains
+CONTAINS
 
 ! ================================================
 !   copy_par: copy constructor for parallel_t type
@@ -113,16 +99,16 @@ contains
     type(parallel_t), intent(out) :: par2
     type(parallel_t), intent(in)  :: par1
 
-    par2%rank            = par1%rank
-    par2%root            = par1%root
-    par2%nprocs          = par1%nprocs
-    par2%comm            = par1%comm
-    par2%intercomm       = par1%intercomm
+    par2%rank       = par1%rank
+    par2%root       = par1%root
+    par2%nprocs     = par1%nprocs
+    par2%comm       = par1%comm
+    par2%intercomm  = par1%intercomm
     par2%commGraphFull   = par1%commGraphFull
     par2%commGraphInter  = par1%commGraphInter
     par2%commGraphIntra  = par1%commGraphIntra
     par2%groupGraphFull  = par1%groupGraphFull
-    par2%masterproc      = par1%masterproc
+    par2%masterproc = par1%masterproc
 
   end subroutine copy_par
 
@@ -143,18 +129,18 @@ contains
 
 #include <mpif.h>
 #ifdef _AIX
-    integer(kind=int_kind)                              :: ii         
+    integer                              :: ii         
     character(len=2)                                    :: cfn
 #endif
 
-    integer(kind=int_kind)                              :: ierr,tmp
-    integer(kind=int_kind)                              :: FrameNumber
+    integer                              :: ierr,tmp
+    integer                              :: FrameNumber
     logical :: running   ! state of MPI at beginning of initmpi call
     character(len=MPI_MAX_PROCESSOR_NAME)               :: my_name
     character(len=MPI_MAX_PROCESSOR_NAME), allocatable  :: the_names(:)
 
-    integer(kind=int_kind),allocatable                  :: tarray(:)
-    integer(kind=int_kind)                              :: namelen,i
+    integer,allocatable                  :: tarray(:)
+    integer                              :: namelen,i
 #ifdef CAM
     integer :: color
     integer :: iam_cam, npes_cam
@@ -502,165 +488,5 @@ end subroutine haltmp
     endif
 #endif
   end subroutine syncmp
-
-#if 0
-  ! =============================================
-  ! psum_1d:
-  ! 1D version of the parallel SUM
-  ! =============================================
-  function psum_1d(variable,type,par) result(res)
-    implicit none
-    ! ==========================
-    !     Arguments   
-    ! ==========================
-    real(kind=real_kind),intent(in)  :: variable(:)
-    integer,intent(in)               :: type 
-    type (parallel_t),intent(in)     :: par
-
-    ! ==========================
-    !       Local Variables 
-    ! ==========================
-    real(kind=real_kind)             :: res
-    real(kind=real_kind)             :: local_sum
-    !
-    ! Note this is a real kludge here since it may be used for 
-    !  arrays of size other then nelem
-    ! 
-    real(kind=real_kind),allocatable :: Global(:),buffer(:)
-    integer                          :: ierr,i,ie,ig,disp,nelemr,ip
-    
-#ifdef _MPI
-#if 0
-    if(type == ORDERED) then 
-      allocate(buffer(nelem))
-      call MPI_GATHERV(variable,nelemd,MPIreal_t,buffer,recvcount, &
-                       displs,MPIreal_t,par%root,par%comm)
-
-      if(par%masterproc) then 
-        allocate(Global(nelem))
-        Global(:)=0.D0
-        do ip=1,par%nprocs
-          nelemr = recvcount(ip)
-          disp   = displs(ip)
-          do ie=1,nelemr
-            ig = Schedule(ip)%Local2Global(ie)
-            Global(ig) = buffer(disp+ie)
-          enddo
-        enddo
-        ! ===========================
-        !  Perform the ordererd sum  
-        ! ===========================
-        res = 0.0d0
-        do i=1,nelem
-          res = res + Global(i)
-        enddo
-        write(iulog,*)'psum_1d: before call to deallocate' 
-        deallocate(Global)
-      endif
-      call syncmp(par)
-      ! =============================================
-      !  Broadcast the results back everybody
-      ! =============================================
-      call MPI_Bcast(res,1,MPIreal_t,par%root,par%comm,ierr)
-    else
-#endif
-      local_sum=SUM(variable)
-
-      call MPI_Allreduce(local_sum,res,1,MPIreal_t, &
-                         MPI_SUM,par%comm,ierr)
-#else
-    if(type == ORDERED) then 
-      ! ===========================
-      !  Perform the ordererd sum  
-      ! ===========================
-      res = 0.0d0
-      do i=1,nelem
-        res = res + variable(i)
-      enddo
-    else
-      res=SUM(variable)
-    endif
-#endif
-  end function psum_1d
-#endif
-  
-  ! =============================================
-  ! pmin_1d:
-  ! 1D version of the parallel MIN
-  ! =============================================
-  function pmin_1d(variable,par) result(res)
-
-    implicit none
-
-    real(kind=real_kind),intent(in)  :: variable(:)
-    type (parallel_t),intent(in)     :: par
-    real(kind=real_kind)             :: res
-         
-    real(kind=real_kind)             :: local_sum
-#ifdef _MPI
-    integer                          :: ierr
-#endif    
-
-    local_sum=MINVAL(variable)
-#ifdef _MPI
-
-    call MPI_Allreduce(local_sum,res,1,MPIreal_t, &
-                       MPI_MIN,par%comm,ierr)
-#else
-    res = local_sum
-#endif
-  end function pmin_1d
-  
-  ! =============================================
-  ! pmax_1d:
-  ! 1D version of the parallel MAX
-  ! =============================================
-  function pmax_1d(variable,par) result(res)
-    implicit none
-
-    real(kind=real_kind),intent(in)  :: variable(:)
-    type (parallel_t),intent(in)     :: par
-    real(kind=real_kind)             :: res
-    
-    real(kind=real_kind)             :: local_sum
-#ifdef _MPI
-    integer                          :: ierr
-#endif    
-    local_sum=MAXVAL(variable)
-#ifdef _MPI
-    call MPI_Allreduce(local_sum,res,1,MPIreal_t, &
-                       MPI_MAX,par%comm,ierr)
-#else
-    res = local_sum
-#endif
-  end function pmax_1d
-
-  ! =============================================
-  ! psum_1d:
-  ! 1D version of the parallel MAX
-  ! =============================================
-  function psum_1d(variable,par) result(res)
-    implicit none
-
-    real(kind=real_kind),intent(in)  :: variable(:)
-    type (parallel_t),intent(in)     :: par
-    real(kind=real_kind)             :: res
-     
-    real(kind=real_kind)             :: local_sum
-#ifdef _MPI
-    integer                          :: ierr
-#endif    
-
-    local_sum=SUM(variable)
-#ifdef _MPI
-    call MPI_Allreduce(local_sum,res,1,MPIreal_t, &
-                       MPI_SUM,par%comm,ierr)
-#else
-    res = local_sum
-#endif
-
-  end function psum_1d
-
-
 
 end module parallel_mod

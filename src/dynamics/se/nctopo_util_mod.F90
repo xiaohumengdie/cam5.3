@@ -33,7 +33,7 @@ contains
   subroutine nctopo_util_inidat( ncid_topo, iodesc, elem)
     use control_mod,        only: smooth_phis_numcycle
     use parallel_mod,       only: par
-    use bndry_mod,          only: bndry_exchangev
+    use bndry_mod,          only: bndry_exchange
     use dof_mod,            only: putUniquePoints
     use edgetype_mod,       only: EdgeBuffer_t
     use edge_mod,           only: edgevpack, edgevunpack, InitEdgeBuffer, FreeEdgeBuffer
@@ -115,7 +115,7 @@ contains
        kptr=kptr+1
        call edgeVpack(edge, PHISdyn(:,:,ie),1,kptr,ie)
     end do
-    call bndry_exchangeV(par,edge)
+    call bndry_exchange(par,edge)
     do ie=1,nelemd
        kptr=0
        call edgeVunpack(edge, SGH30dyn(:,:,ie),1,kptr,ie)

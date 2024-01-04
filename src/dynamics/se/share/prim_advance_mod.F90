@@ -67,7 +67,7 @@ contains
     use hybrid_mod,        only: hybrid_t
     use time_mod,          only: TimeLevel_t,  timelevel_qdp
     use dimensions_mod,    only: nlevp
-    use bndry_mod, only : bndry_exchangev
+    use bndry_mod, only : bndry_exchange
     use edgetype_mod, only : EdgeBuffer_t
     use edge_mod, only : edgevpack, edgevunpack, initEdgeBuffer
     use reduction_mod, only : reductionbuffer_ordered_1d_t
@@ -390,7 +390,7 @@ contains
     use derivative_mod, only : derivative_t, laplace_sphere_wk, vlaplace_sphere_wk
     use edgetype_mod, only : EdgeBuffer_t
     use edge_mod, only : edgevpack, edgevunpack
-    use bndry_mod, only : bndry_exchangev
+    use bndry_mod, only : bndry_exchange
     use viscosity_mod, only : biharmonic_wk_dp3d
     use physical_constants, only: Cp
 
@@ -473,7 +473,7 @@ contains
            call edgeVpack(edge3,elem(ie)%state%v(:,:,:,:,nt),2*nlev,kptr,ie)
         enddo
 
-        call bndry_exchangeV(hybrid,edge3)
+        call bndry_exchange(hybrid,edge3)
 
         do ie=nets,nete
 
@@ -587,7 +587,7 @@ contains
         enddo
 
 
-        call bndry_exchangeV(hybrid,edge3)
+        call bndry_exchange(hybrid,edge3)
 
         do ie=nets,nete
 
@@ -685,7 +685,7 @@ contains
   use derivative_mod, only : derivative_t, laplace_sphere_wk, vlaplace_sphere_wk
   use edgetype_mod, only : EdgeBuffer_t
   use edge_mod, only : edgevpack, edgevunpack
-  use bndry_mod, only : bndry_exchangev
+  use bndry_mod, only : bndry_exchange
   use viscosity_mod, only : biharmonic_wk
   use physical_constants, only: Cp
 !  use time_mod, only : TimeLevel_t
@@ -765,7 +765,7 @@ contains
            call edgeVpack(edge3,elem(ie)%state%v(:,:,:,:,nt),2*nlev,kptr,ie)
         enddo
 
-        call bndry_exchangeV(hybrid,edge3)
+        call bndry_exchange(hybrid,edge3)
 
         do ie=nets,nete
 
@@ -887,7 +887,7 @@ contains
         enddo
 
 
-        call bndry_exchangeV(hybrid,edge3)
+        call bndry_exchange(hybrid,edge3)
 
         do ie=nets,nete
 
@@ -983,7 +983,7 @@ contains
   use element_mod, only : element_t
   use derivative_mod, only : derivative_t, divergence_sphere, gradient_sphere, vorticity_sphere
   use edge_mod, only : edgevpack, edgevunpack
-  use bndry_mod, only : bndry_exchangev
+  use bndry_mod, only : bndry_exchange
   use control_mod, only : moisture, qsplit, use_cpstar, rsplit
   use hybvcoord_mod, only : hvcoord_t
 
@@ -1380,7 +1380,7 @@ contains
     ! Insert communications here: for shared memory, just a single
   ! sync is required
   ! =============================================================
-  call bndry_exchangeV(hybrid,edge3p1)
+  call bndry_exchange(hybrid,edge3p1)
   do ie=nets,nete
      ! ===========================================================
      ! Unpack the edges for vgrad_T and v tendencies...
@@ -1438,7 +1438,7 @@ contains
   use hybrid_mod, only : hybrid_t
   use edgetype_mod, only : EdgeBuffer_t
   use edge_mod, only : edgevpack, edgevunpack, edgevunpackmax, edgevunpackmin
-  use bndry_mod, only : bndry_exchangev
+  use bndry_mod, only : bndry_exchange
   use element_mod, only : element_t
   use derivative_mod, only : derivative_t , laplace_sphere_wk
   use time_mod, only : TimeLevel_t
@@ -1465,7 +1465,7 @@ contains
      pstens(:,:,ie)=minval(phis(:,:,ie))
      call edgeVpack(edge3p1,pstens(:,:,ie),1,0,ie)
   enddo
-  call bndry_exchangeV(hybrid,edge3p1)
+  call bndry_exchange(hybrid,edge3p1)
   do ie=nets,nete
      call edgeVunpackMin(edge3p1, pstens(:,:,ie), 1, 0, ie)
      pmin(ie)=minval(pstens(:,:,ie))
@@ -1474,7 +1474,7 @@ contains
      pstens(:,:,ie)=maxval(phis(:,:,ie))
      call edgeVpack(edge3p1,pstens(:,:,ie),1,0,ie)
   enddo
-  call bndry_exchangeV(hybrid,edge3p1)
+  call bndry_exchange(hybrid,edge3p1)
   do ie=nets,nete
      call edgeVunpackMax(edge3p1, pstens(:,:,ie), 1, 0, ie)
      pmax(ie)=maxval(pstens(:,:,ie))
@@ -1508,7 +1508,7 @@ contains
            call laplace_sphere_wk(pstens(:,:,ie),deriv,elem(ie),pstens(:,:,ie), var_coef=use_var_coef)
            call edgeVpack(edge3p1,pstens(:,:,ie),1,0,ie)
         enddo
-        call bndry_exchangeV(hybrid,edge3p1)
+        call bndry_exchange(hybrid,edge3p1)
         do ie=nets,nete
            call edgeVunpack(edge3p1, pstens(:,:,ie), 1, 0, ie)
            pstens(:,:,ie)=pstens(:,:,ie)*elem(ie)%rspheremp(:,:)
@@ -1557,7 +1557,7 @@ contains
         phis(:,:,ie)=phis(:,:,ie)*elem(ie)%spheremp(:,:)
         call edgeVpack(edge3p1,phis(:,:,ie),1,0,ie)
      enddo
-     call bndry_exchangeV(hybrid,edge3p1)
+     call bndry_exchange(hybrid,edge3p1)
      do ie=nets,nete
         call edgeVunpack(edge3p1, phis(:,:,ie), 1, 0, ie)
         phis(:,:,ie)=phis(:,:,ie)*elem(ie)%rspheremp(:,:)
