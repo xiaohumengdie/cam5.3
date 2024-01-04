@@ -1,3 +1,5 @@
+#define LIMITER_ORIGINAL 1
+!#define LIMITER_REWRITE_OPT 1
 module derivative_mod
   use shr_kind_mod,       only: r8=>shr_kind_r8
   use cam_abortutils,     only: endrun
@@ -91,7 +93,7 @@ private
   public  :: element_boundary_integral
   public  :: edge_flux_u_cg
 
-
+  public  :: limiter_optim_iter_full
 
 contains
 
@@ -1872,13 +1874,280 @@ end do
   end subroutine allocate_subcell_integration_matrix
 
 
+#ifdef LIMITER_ORIGINAL
+  subroutine limiter_optim_iter_full(ptens,sphweights,minp,maxp,dpmass)
+    !THIS IS A NEW VERSION OF LIM8, POTENTIALLY FASTER BECAUSE INCORPORATES KNOWLEDGE FROM
+    !PREVIOUS ITERATIONS
+
+    !The idea here is the following: We need to find a grid field which is closest
+    !to the initial field (in terms of weighted sum), but satisfies the min/max constraints.
+    !So, first we find values which do not satisfy constraints and bring these values
+    !to a closest constraint. This way we introduce some mass change (addmass),
+    !so, we redistribute addmass in the way that l2 error is smallest.
+    !This redistribution might violate constraints thus, we do a few iterations.
+    use dimensions_mod, only : np, np, nlev
+    real (kind=r8), dimension(np*np,nlev), intent(inout)            :: ptens
+    real (kind=r8), dimension(np*np     ), intent(in   )            :: sphweights
+    real (kind=r8), dimension(      nlev), intent(inout)            :: minp
+    real (kind=r8), dimension(      nlev), intent(inout)            :: maxp
+    real (kind=r8), dimension(np*np,nlev), intent(in   ), optional  :: dpmass
+
+    real (kind=r8), dimension(np*np,nlev) :: weights
+    integer  k1, k, i, j, iter, i1, i2
+    integer :: whois_neg(np*np), whois_pos(np*np), neg_counter, pos_counter
+    real (kind=r8) :: addmass, weightssum, mass
+    real (kind=r8) :: x(np*np),c(np*np)
+    real (kind=r8) :: al_neg(np*np), al_pos(np*np), howmuch
+    real (kind=r8) :: tol_limiter = 1e-15
+    integer, parameter :: maxiter = 5
+
+    do k = 1 , nlev
+      weights(:,k) = sphweights(:) * dpmass(:,k)
+      ptens(:,k) = ptens(:,k) / dpmass(:,k)
+    enddo
+
+    do k = 1 , nlev
+      c = weights(:,k)
+      x = ptens(:,k)
+
+      mass = sum(c*x)
+
+      ! relax constraints to ensure limiter has a solution:
+      ! This is only needed if runnign with the SSP CFL>1 or
+      ! due to roundoff errors
+      if( (mass / sum(c)) < minp(k) ) then
+        minp(k) = mass / sum(c)
+      endif
+      if( (mass / sum(c)) > maxp(k) ) then
+        maxp(k) = mass / sum(c)
+      endif
+
+      addmass = 0.0d0
+      pos_counter = 0;
+      neg_counter = 0;
+
+      ! apply constraints, compute change in mass caused by constraints
+      do k1 = 1 , np*np
+        if ( ( x(k1) >= maxp(k) ) ) then
+          addmass = addmass + ( x(k1) - maxp(k) ) * c(k1)
+          x(k1) = maxp(k)
+          whois_pos(k1) = -1
+        else
+          pos_counter = pos_counter+1;
+          whois_pos(pos_counter) = k1;
+        endif
+        if ( ( x(k1) <= minp(k) ) ) then
+          addmass = addmass - ( minp(k) - x(k1) ) * c(k1)
+          x(k1) = minp(k)
+          whois_neg(k1) = -1
+        else
+          neg_counter = neg_counter+1;
+          whois_neg(neg_counter) = k1;
+        endif
+      enddo
+
+      ! iterate to find field that satifies constraints and is l2-norm closest to original
+      weightssum = 0.0d0
+      if ( addmass > 0 ) then
+        do i2 = 1 , maxIter
+          weightssum = 0.0
+          do k1 = 1 , pos_counter
+            i1 = whois_pos(k1)
+            weightssum = weightssum + c(i1)
+            al_pos(i1) = maxp(k) - x(i1)
+          enddo
+
+          if( ( pos_counter > 0 ) .and. ( addmass > tol_limiter * abs(mass) ) ) then
+            do k1 = 1 , pos_counter
+              i1 = whois_pos(k1)
+              howmuch = addmass / weightssum
+              if ( howmuch > al_pos(i1) ) then
+                howmuch = al_pos(i1)
+                whois_pos(k1) = -1
+              endif
+              addmass = addmass - howmuch * c(i1)
+              weightssum = weightssum - c(i1)
+              x(i1) = x(i1) + howmuch
+            enddo
+            !now sort whois_pos and get a new number for pos_counter
+            !here neg_counter and whois_neg serve as temp vars
+            neg_counter = pos_counter
+            whois_neg = whois_pos
+            whois_pos = -1
+            pos_counter = 0
+            do k1 = 1 , neg_counter
+              if ( whois_neg(k1) .ne. -1 ) then
+                pos_counter = pos_counter+1
+                whois_pos(pos_counter) = whois_neg(k1)
+              endif
+            enddo
+          else
+            exit
+          endif
+        enddo
+      else
+         do i2 = 1 , maxIter
+           weightssum = 0.0
+           do k1 = 1 , neg_counter
+             i1 = whois_neg(k1)
+             weightssum = weightssum + c(i1)
+             al_neg(i1) = x(i1) - minp(k)
+           enddo
+
+           if ( ( neg_counter > 0 ) .and. ( (-addmass) > tol_limiter * abs(mass) ) ) then
+             do k1 = 1 , neg_counter
+               i1 = whois_neg(k1)
+               howmuch = -addmass / weightssum
+               if ( howmuch > al_neg(i1) ) then
+                 howmuch = al_neg(i1)
+                 whois_neg(k1) = -1
+               endif
+               addmass = addmass + howmuch * c(i1)
+               weightssum = weightssum - c(i1)
+               x(i1) = x(i1) - howmuch
+             enddo
+             !now sort whois_pos and get a new number for pos_counter
+             !here pos_counter and whois_pos serve as temp vars
+             pos_counter = neg_counter
+             whois_pos = whois_neg
+             whois_neg = -1
+             neg_counter = 0
+             do k1 = 1 , pos_counter
+               if ( whois_pos(k1) .ne. -1 ) then
+                 neg_counter = neg_counter+1
+                 whois_neg(neg_counter) = whois_pos(k1)
+               endif
+             enddo
+           else
+             exit
+           endif
+         enddo
+      endif
+
+      ptens(:,k) = x
+    enddo
+
+    do k = 1 , nlev
+      ptens(:,k) = ptens(:,k) * dpmass(:,k)
+    enddo
+  end subroutine limiter_optim_iter_full
+#endif
+
+#ifdef LIMITER_REWRITE_OPT
+  subroutine limiter_optim_iter_full(ptens,sphweights,minp,maxp,dpmass)
+    !
+    !The idea here is the following: We need to find a grid field which is closest
+    !to the initial field (in terms of weighted sum), but satisfies the min/max constraints.
+    !So, first we find values which do not satisfy constraints and bring these values
+    !to a closest constraint. This way we introduce some mass change (addmass),
+    !so, we redistribute addmass in the way that l2 error is smallest.
+    !This redistribution might violate constraints thus, we do a few iterations.
+    !
+    ! O. Guba ~2012                    Documented in Guba, Taylor & St-Cyr, JCP 2014
+    ! I. Demeshko & M. Taylor 7/2015:  Removed indirect addressing.
+    ! N. Lopez & M. Taylor 8/2015:     Mass redistributon tweak which is better at
+    !                                  linear coorelation preservation
+    !
+    use dimensions_mod, only : np, nlev
+
+    real (kind=r8), dimension(nlev), intent(inout)   :: minp, maxp
+    real (kind=r8), dimension(np*np,nlev), intent(inout)   :: ptens
+    real (kind=r8), dimension(np*np,nlev), intent(in), optional  :: dpmass
+    real (kind=r8), dimension(np*np), intent(in)   :: sphweights
+
+    real (kind=r8), dimension(np,np) :: ptens_mass
+    integer  k1, k, i, j, iter, weightsnum
+    real (kind=r8) :: addmass, weightssum, mass, sumc
+    real (kind=r8) :: x(np*np),c(np*np)
+    integer :: maxiter = np*np-1
+    real (kind=r8) :: tol_limiter = 5.0e-14_r8
+
+    do k = 1, nlev
+
+     do k1=1,np*np
+       c(k1)=sphweights(k1)*dpmass(k1,k)
+       x(k1)=ptens(k1,k)/dpmass(k1,k)
+     enddo
+
+     sumc=sum(c)
+     if (sumc <= 0 ) CYCLE   ! this should never happen, but if it does, dont limit
+     mass=sum(c*x)
+
+
+
+      ! relax constraints to ensure limiter has a solution:
+      ! This is only needed if runnign with the SSP CFL>1 or
+      ! due to roundoff errors
+      if( mass < minp(k)*sumc ) then
+        minp(k) = mass / sumc
+      endif
+      if( mass > maxp(k)*sumc ) then
+        maxp(k) = mass / sumc
+      endif
+
+
+
+     do iter=1,maxiter
+
+      addmass=0.0d0
+
+       do k1=1,np*np
+         if((x(k1)>maxp(k))) then
+           addmass=addmass+(x(k1)-maxp(k))*c(k1)
+           x(k1)=maxp(k)
+         endif
+         if((x(k1)<minp(k))) then
+           addmass=addmass-(minp(k)-x(k1))*c(k1)
+           x(k1)=minp(k)
+         endif
+       enddo !k1
+
+       if(abs(addmass)<=tol_limiter*abs(mass)) exit
+
+       weightssum=0.0d0
+       if(addmass>0)then
+        do k1=1,np*np
+          if(x(k1)<maxp(k))then
+            weightssum=weightssum+c(k1)
+          endif
+        enddo !k1
+        do k1=1,np*np
+          if(x(k1)<maxp(k))then
+              x(k1)=x(k1)+addmass/weightssum
+          endif
+        enddo
+      else
+        do k1=1,np*np
+          if(x(k1)>minp(k))then
+            weightssum=weightssum+c(k1)
+          endif
+        enddo
+        do k1=1,np*np
+          if(x(k1)>minp(k))then
+            x(k1)=x(k1)+addmass/weightssum
+          endif
+        enddo
+      endif
+
+
+   enddo!end of iteration
+
+   do k1=1,np*np
+      ptens(k1,k)=x(k1)
+   enddo
+
+  enddo
+
+  do k = 1, nlev
+    do k1=1,np*np
+      ptens(k1,k)=ptens(k1,k)*dpmass(k1,k)
+    enddo
+  enddo
+
+  end subroutine limiter_optim_iter_full
+#endif
+
+
+
 
 end module derivative_mod
-
-
-
-
-
-
-
-

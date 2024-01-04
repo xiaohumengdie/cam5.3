@@ -1,7 +1,3 @@
-#ifdef _COLLAPSE_AND_ALIGN
-#define OMP_COLLAPSE_SIMD  $OMP SIMD COLLAPSE(2)
-#define DIR_VECTOR_ALIGNED DIR$ VECTOR ALIGNED
-#endif
 module prim_advance_mod
   use shr_kind_mod,   only: r8=>shr_kind_r8
   use edgetype_mod,   only: EdgeBuffer_t
