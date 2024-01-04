@@ -88,7 +88,7 @@ CONTAINS
     use time_manager,        only: get_nstep, dtime
 
     use dimensions_mod,   only: globaluniquecols, nelem, nelemd, nelemdmax
-    use prim_driver_mod,  only: prim_init1
+    use prim_init,        only: prim_init1
     use thread_mod,       only: horz_num_threads
     use parallel_mod,     only: par, initmpi
     use namelist_mod,     only: readnl

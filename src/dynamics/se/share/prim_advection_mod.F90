@@ -1,21 +1,10 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#ifdef _COLLAPSE_AND_ALIGN
-#define OMP_COLLAPSE_SIMD  $OMP SIMD COLLAPSE(2)
-#define DIR_VECTOR_ALIGNED DIR$ VECTOR ALIGNED
-#endif
-
 #define LIMITER_ORIGINAL 1
 !#define LIMITER_REWRITE_OPT 1
 #define OVERLAP 1
-
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! Begin GPU remap module  !!
 !! by Rick Archibald, 2010  !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 module vertremap_mod
 
   !**************************************************************************************
@@ -759,18 +748,6 @@ end function integrate_parabola
 
 
 end module vertremap_mod
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! End GPU remap module    !!
-!! by Rick Archibald, 2010  !!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-!=======================================================================================================!
-
-
-
-
 module prim_advection_mod
 !
 ! two formulations.  both are conservative
