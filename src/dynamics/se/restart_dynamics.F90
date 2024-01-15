@@ -330,14 +330,12 @@ CONTAINS
     use dyn_comp, only : dyn_init1, dyn_init2
     use dimensions_mod, only : nlev, np, ne, nelemd, qsize_d
     use cam_abortutils,   only: endrun
-    use namelist_mod, only: readnl
     use constituents, only : cnst_name
     use bndry_mod,   only: bndry_exchange
     use edgetype_mod,   only: EdgeBuffer_t
     use edge_mod,       only: initEdgeBuffer, FreeEdgeBuffer, &
          edgeVpack, edgeVunpack
     use cam_pio_utils, only : pio_subsystem
-    use spmd_dyn, only: spmd_readnl
     use control_mod,            only: qsplit
     use time_mod,               only: TimeLevel_Qdp
 
