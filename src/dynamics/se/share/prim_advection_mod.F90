@@ -289,7 +289,7 @@ contains
           do i=1,np
            elem(ie)%state%Qdp(i,j,k,q,np1_qdp) =               &
                ( elem(ie)%state%Qdp(i,j,k,q,n0_qdp) + &
-               (rkstage-1)*elem(ie)%state%Qdp(i,j,k,q,np1_qdp) ) * rrkstage
+               (rkstage-1)*elem(ie)%state%Qdp(i,j,k,q,np1_qdp) ) / rkstage
           enddo
           enddo
         enddo

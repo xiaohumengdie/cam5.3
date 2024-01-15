@@ -1,8 +1,8 @@
 Module dyn_comp
 
-  use shr_kind_mod, only: r8 => shr_kind_r8
+  use shr_kind_mod,           only: r8=>shr_kind_r8, shr_kind_cl
   use element_mod, only : element_t, elem_state_t
-  use time_mod, only : TimeLevel_t, se_nsplit=>nsplit
+  use time_mod, only : TimeLevel_t, nsplit
   use hybvcoord_mod, only : hvcoord_t
   use hybrid_mod, only : hybrid_t
   use perf_mod, only: t_startf, t_stopf
@@ -10,11 +10,11 @@ Module dyn_comp
   use time_manager, only: is_first_step
   use spmd_utils,  only : iam, npes_cam => npes
   use pio,         only: file_desc_t
+  use time_mod, only : phys_tscale
 
   implicit none
   private
   save
-
 
   ! PUBLIC MEMBER FUNCTIONS:
   public dyn_init1, dyn_init2, dyn_run, dyn_final
@@ -33,6 +33,7 @@ Module dyn_comp
      type (element_t), pointer :: elem(:) => null()
   end type dyn_export_t
   type (hvcoord_t), public  :: hvcoord
+
   integer, parameter  ::  DYN_RUN_SUCCESS           = 0
   integer, parameter  ::  DYN_RUN_FAILURE           = -1
 
@@ -65,38 +66,287 @@ Module dyn_comp
   integer, public :: frontgf_idx = -1
   integer, public :: frontga_idx = -1
 
-CONTAINS
+!===============================================================================
+contains
+!===============================================================================
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+subroutine dyn_readnl(NLFileName)
+
+   use namelist_utils, only: find_group_name
+   use namelist_mod,   only: homme_set_defaults, homme_postprocess_namelist, read_analysis_nl
+   use units,          only: getunit, freeunit
+   use spmd_utils,     only: masterproc, masterprocid, mpicom, npes
+   use spmd_utils,     only: mpi_real8, mpi_integer, mpi_character, mpi_logical
+
+   use control_mod,    only: TRACERTRANSPORT_SE_GLL, tracer_transport_type
+   use control_mod,    only: TRACER_GRIDTYPE_GLL, tracer_grid_type
+   use control_mod,    only: energy_fixer, hypervis_order, hypervis_subcycle
+   use control_mod,    only: hypervis_subcycle_q, statefreq
+   use control_mod,    only: nu, nu_div, nu_p, nu_q, nu_top, qsplit, rsplit, nu_s
+   use control_mod,    only: vert_remap_q_alg, tstep_type, rk_stage_user
+   use control_mod,    only: ftype, limiter_option, partmethod
+   use control_mod,    only: topology, numnodes, tasknum, moisture
+   use control_mod,    only: columnpackage, remapfreq, remap_type
+   use control_mod,    only: initial_total_mass
+   use control_mod,    only: fine_ne, hypervis_power, hypervis_scaling
+   use control_mod,    only: max_hypervis_courant
+    use cam_abortutils, only: endrun
+    use dimensions_mod, only: qsize, qsize_d, npsq, ne, npart
+    use constituents,   only: pcnst
+    use params_mod,     only: SFCURVE
+    use parallel_mod,   only: par, initmpi
+!!XXgoldyXX: v For future CSLAM / physgrid commit
+!    use dp_grids,       only: fv_nphys, fv_nphys2, nphys_pts, write_phys_grid, phys_grid_file
+!!XXgoldyXX: ^ For future CSLAM / physgrid commit
+
+    ! Dummy argument
+    character(len=*), intent(in) :: NLFileName
+
+    ! Local variables
+    integer                      :: unitn, ierr
+   ! SE Namelist variables
+!    integer                      :: se_fine_ne
+    integer                      :: se_ftype
+    integer                      :: se_hypervis_order
+    integer                      :: se_hypervis_subcycle
+    integer                      :: se_hypervis_subcycle_q
+    integer                      :: se_limiter_option
+!    real(r8)                     :: se_max_hypervis_courant
+    character(len=SHR_KIND_CL)   :: se_mesh_file
+    integer                      :: se_ne
+    integer                      :: se_npes
+    integer                      :: se_nsplit
+    real(r8)                     :: se_nu
+    real(r8)                     :: se_nu_div
+    real(r8)                     :: se_nu_p
+    real(r8)                     :: se_nu_q
+    real(r8)                     :: se_nu_top
+    integer                      :: se_qsplit
+!    logical                      :: se_refined_mesh
+    integer                      :: se_rsplit
+    integer                      :: se_statefreq
+    integer                      :: se_tstep_type
+    integer                      :: se_phys_tscale
+    integer                      :: se_vert_remap_q_alg
+!!XXgoldyXX: v For future CSLAM / physgrid commit
+!    character(len=METHOD_LEN)     :: se_tracer_transport_method
+!    character(len=METHOD_LEN)     :: se_cslam_ideal_test
+!    character(len=METHOD_LEN)     :: se_cslam_test_type
+!    character(len=METHOD_LEN)     :: se_write_phys_grid
+!    character(len=shr_kind_cl)    :: se_phys_grid_file
+!    integer                       :: se_fv_nphys = 0
+!!XXgoldyXX: ^ For future CSLAM / physgrid commit
+
+    namelist /dyn_se_inparm/      &
+         se_ftype,                & ! forcing type
+         se_hypervis_order,       &
+         se_hypervis_subcycle,    &
+         se_hypervis_subcycle_q,  &
+         se_limiter_option,       &
+         se_ne,                   &
+         se_npes,                 &
+         se_nsplit,               & ! # of dynamics steps per physics timestep
+         se_nu,                   &
+         se_nu_div,               &
+         se_nu_p,                 &
+         se_nu_q,                 &
+         se_nu_top,               &
+         se_qsplit,               &
+         se_rsplit,               &
+         se_statefreq,            & ! number of steps per printstate call
+         se_tstep_type,           &
+         se_phys_tscale,          &
+         se_vert_remap_q_alg
+
+    !--------------------------------------------------------------------------
+
+   ! namelist default values should be in namelist (but you know users . . .)
+    ! NB: Of course, these should keep up with what is in namelist_defaults ...
+    se_mesh_file            = 'none'
+    se_ftype                = 2
+    se_hypervis_order       = 2
+    se_hypervis_subcycle    = 3
+    se_hypervis_subcycle_q  = 1
+    se_limiter_option       = 4
+    se_ne                   = -1
+    se_npes                 = npes
+    se_nsplit               = 1
+    se_nu                   = 1.0e15_r8
+    se_nu_div               = 2.5e15_r8
+    se_nu_p                 = 1.0e15_r8
+    se_nu_q                 = -1.0_r8
+    se_nu_top               = 2.5e5_r8
+    se_qsplit               = 4
+    se_rsplit               = 3
+    se_statefreq            = 1
+    se_tstep_type           = 1
+    se_phys_tscale          = 0
+    se_vert_remap_q_alg     = 1
+
+    ! Read the namelist (dyn_se_inparm)
+    call MPI_barrier(mpicom, ierr)
+    if (masterproc) then
+      write(iulog, *) "dyn_readnl: reading dyn_se_inparm namelist..."
+      unitn = getunit()
+      open( unitn, file=trim(NLFileName), status='old' )
+      call find_group_name(unitn, 'dyn_se_inparm', status=ierr)
+      if (ierr == 0) then
+        read(unitn, dyn_se_inparm, iostat=ierr)
+        if (ierr /= 0) then
+          call endrun('dyn_readnl: ERROR reading dyn_se_inparm namelist')
+        end if
+      end if
+      close(unitn)
+      call freeunit(unitn)
+   end if
+
+    ! Broadcast namelist values to all PEs
+    call MPI_bcast(se_ftype, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_hypervis_order, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_hypervis_subcycle, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_hypervis_subcycle_q, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_limiter_option, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_ne, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_npes, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_nsplit, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_nu, 1, mpi_real8, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_nu_div, 1, mpi_real8, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_nu_p, 1, mpi_real8, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_nu_q, 1, mpi_real8, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_nu_top, 1, mpi_real8, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_qsplit, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_rsplit, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_statefreq, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_tstep_type, 1, mpi_integer, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_phys_tscale, 1 ,mpi_real8, masterprocid, mpicom, ierr)
+    call MPI_bcast(se_vert_remap_q_alg, 1, mpi_integer, masterprocid, mpicom, ierr)
+
+    phys_tscale = se_phys_tscale
+
+    ! Initialize the SE structure that holds the MPI decomposition information
+    if (se_npes <= 0) then
+      se_npes = npes
+    end if
+    par = initmpi(se_npes)
+
+    ! Fix up unresolved default values
+    ! default diffusion coefficiets
+    if (se_nu_q < 0) then
+      se_nu_q = se_nu
+    end if
+    if (se_nu_div < 0) then
+      se_nu_div = se_nu
+    end if
+
+    ! Set HOMME defaults
+    call homme_set_defaults()
+
+    call read_analysis_nl(par, NLFileName)
+    ! Set HOMME variables not in CAM's namelist but with different CAM defaults
+    partmethod           = SFCURVE
+    npart                = se_npes
+    energy_fixer         = -1      ! no fixer, non-staggered-in-time formulas
+    ! CAM requires forward-in-time, subcycled dynamics
+    ! RK2 3 stage tracers, sign-preserving conservative
+    rk_stage_user        = 3
+!    integration          = 'explicit'
+    qsize                = qsize_d
+    topology             = "cube"
+    ! Finally, set the HOMME variables which have different names
+!    fine_ne              = se_fine_ne
+    ftype                = se_ftype
+    hypervis_order       = se_hypervis_order
+    hypervis_subcycle    = se_hypervis_subcycle
+    hypervis_subcycle_q  = se_hypervis_subcycle_q
+    limiter_option       = se_limiter_option
+!    max_hypervis_courant = se_max_hypervis_courant
+    if(se_ne /= -1)   ne = se_ne
+!    ne                   = se_ne
+    nsplit               = se_nsplit
+    nu                   = se_nu
+    nu_div               = se_nu_div
+    nu_p                 = se_nu_p
+    nu_q                 = se_nu_q
+    nu_top               = se_nu_top
+    qsplit               = se_qsplit
+    rsplit               = se_rsplit
+    statefreq            = se_statefreq
+    tstep_type           = se_tstep_type
+    vert_remap_q_alg     = se_vert_remap_q_alg
+
+    if(nu_s<0) nu_s=nu
+    if(nu_q<0) nu_q=nu
+    if(nu_div<0) nu_div=nu
+    call homme_postprocess_namelist(se_mesh_file, par)
+
+    if (phys_tscale/=0) then
+       if (ftype>0) call endrun('user specified se_phys_tscale requires se_ftype<=0')
+    endif
+
+    if (masterproc) then
+      write(iulog, '(a,i0)') 'dyn_readnl: se_ftype = ',se_ftype
+      write(iulog, '(a,i0)') 'dyn_readnl: se_hypervis_order = ',se_hypervis_order
+      write(iulog, '(a,i0)') 'dyn_readnl: se_hypervis_subcycle = ',se_hypervis_subcycle
+      write(iulog, '(a,i0)') 'dyn_readnl: se_hypervis_subcycle_q = ',se_hypervis_subcycle_q
+      write(iulog, '(a,i0)') 'dyn_readnl: se_limiter_option = ',se_limiter_option
+!      if (.not. se_refined_mesh) then
+!        write(iulog, '(a,i0)') 'dyn_readnl: se_ne = ',se_ne
+!      end if
+      write(iulog, '(a,i0)') 'dyn_readnl: se_npes = ',se_npes
+      write(iulog, '(a,i0)') 'dyn_readnl: se_nsplit = ',se_nsplit
+      write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu = ',se_nu
+      write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu_div = ',se_nu_div
+      write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu_p = ',se_nu_p
+      write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu_q = ',se_nu_q
+      write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu_top = ',se_nu_top
+      write(iulog, '(a,i0)') 'dyn_readnl: se_qsplit = ',se_qsplit
+      write(iulog, '(a,i0)') 'dyn_readnl: se_rsplit = ',se_rsplit
+      write(iulog, '(a,i0)') 'dyn_readnl: se_statefreq = ',se_statefreq
+      write(iulog, '(a,i0)') 'dyn_readnl: se_tstep_type = ',se_tstep_type
+      write(iulog, '(a,i0)') 'dyn_readnl: se_vert_remap_q_alg = ',se_vert_remap_q_alg
+!      if (se_refined_mesh) then
+!        write(iulog, *) 'dyn_readnl: Refined mesh simulation'
+!        write(iulog, *) 'dyn_readnl: se_mesh_file = ',trim(se_mesh_file)
+!        write(iulog, '(a,e11.4)') 'dyn_readnl: se_max_hypervis_courant = ',se_max_hypervis_courant
+!      end if
+      if (limiter_option==8 .or. limiter_option==84) then
+         if (hypervis_subcycle_q/=1) then
+            call endrun('limiter 8,84 requires hypervis_subcycle_q=1')
+         endif
+      endif
+
+    end if
+
+  end subroutine dyn_readnl
 
   subroutine dyn_init1(fh, NLFileName, dyn_in, dyn_out)
 
   ! Initialize the dynamical core
 
-    use pio,                 only: file_desc_t
-    use hycoef,              only: hycoef_init
-    use ref_pres,            only: ref_pres_init
+    use pio,             only: file_desc_t
+    use hycoef,          only: hycoef_init
+    use ref_pres,        only: ref_pres_init
 
+    use dyn_grid,        only: dyn_grid_init, elem, get_dyn_grid_parm
+    use dyn_grid,        only: set_horiz_grid_cnt_d
+
+    use spmd_utils,      only: mpi_integer, mpicom, mpi_logical
+    use native_mapping,  only: create_native_mapping_files, native_mapping_readnl
+    use time_manager,    only: get_nstep, dtime
+
+    use dimensions_mod,  only: globaluniquecols, nelem, nelemd, nelemdmax
+    use parallel_mod,    only: par
+    use prim_init,       only: prim_init1
+    use thread_mod,      only: horz_num_threads
+    use control_mod,     only: runtype, qsplit, rsplit
+    use time_mod,        only: tstep
+
+    use phys_control,    only: use_gw_front, use_gw_front_igw
+    use physics_buffer,  only: pbuf_add_field, dtype_r8
+    use ppgrid,          only: pcols, pver
     use pmgrid,              only: dyndecomp_set
-    use dyn_grid,            only: dyn_grid_init, elem, get_dyn_grid_parm,&
-                                   set_horiz_grid_cnt_d
     use rgrid,               only: fullgrid
-    use spmd_utils,          only: mpi_integer, mpicom, mpi_logical
-    use spmd_dyn,            only: spmd_readnl
     use interpolate_mod,     only: interpolate_analysis
-    use native_mapping,      only: create_native_mapping_files, native_mapping_readnl
-    use time_manager,        only: get_nstep, dtime
-
-    use dimensions_mod,   only: globaluniquecols, nelem, nelemd, nelemdmax
-    use prim_init,        only: prim_init1
-    use thread_mod,       only: horz_num_threads
-    use parallel_mod,     only: par, initmpi
-    use namelist_mod,     only: readnl
-    use control_mod,      only: runtype, qsplit, rsplit
-    use time_mod,         only: tstep
-    use phys_control,     only: use_gw_front, use_gw_front_igw
-    use physics_buffer,   only: pbuf_add_field, dtype_r8
-    use ppgrid,           only: pcols, pver
 
     ! PARAMETERS:
     type(file_desc_t),   intent(in)  :: fh       ! PIO file handle for initial or restart file
@@ -123,13 +373,8 @@ CONTAINS
     ! Initialize dynamics grid
     call dyn_grid_init()
 
-    ! Read in the number of tasks to be assigned to SE (needed by initmp)
-    call spmd_readnl(NLFileName, npes_se)
-    ! Initialize the SE structure that holds the MPI decomposition information
-    par=initmpi(npes_se)
-
     ! Read the SE specific part of the namelist
-    call readnl(par, NLFileName)
+    call dyn_readnl(NLFileName)
 
     ! override the setting in the SE namelist, it's redundant anyway
     if (.not. is_first_step()) runtype = 1
@@ -172,7 +417,6 @@ CONTAINS
     
        call set_horiz_grid_cnt_d(GlobalUniqueCols)
 
-
        neltmp(1) = nelemdmax
        neltmp(2) = nelem
        neltmp(3) = get_dyn_grid_parm('plon')
@@ -186,23 +430,19 @@ CONTAINS
     endif
 
     dyndecomp_set = .true.
-
-
-
     if (par%nprocs .lt. npes_cam) then
 ! Broadcast quantities to auxiliary processes
 #ifdef SPMD
        call mpibcast(neltmp, 3, mpi_integer, 0, mpicom)
        call mpibcast(nellogtmp, 7, mpi_logical, 0, mpicom)
 #endif
-       if (iam .ge. par%nprocs) then
-          nelemdmax = neltmp(1)
-          nelem     = neltmp(2)
-          call set_horiz_grid_cnt_d(neltmp(3))
-          interpolate_analysis(1:7) = nellogtmp(1:7)
-       endif
+      if (iam .ge. par%nprocs) then
+        nelemdmax = neltmp(1)
+        nelem     = neltmp(2)
+        call set_horiz_grid_cnt_d(neltmp(3))
+      interpolate_analysis(1:7) = nellogtmp(1:7)
+     endif
     endif
-
 
     !
     ! This subroutine creates mapping files using SE basis functions if requested
@@ -220,12 +460,12 @@ CONTAINS
 
     if (rsplit==0) then
        ! non-lagrangian code
-       tstep = dtime/real(se_nsplit*qsplit,r8)
-       TimeLevel%nstep = get_nstep()*se_nsplit*qsplit
+       tstep = dtime/real(nsplit*qsplit,r8)
+       TimeLevel%nstep = get_nstep()*nsplit*qsplit
    else
       ! lagrangian code
-       tstep = dtime/real(se_nsplit*qsplit*rsplit,r8)
-       TimeLevel%nstep = get_nstep()*se_nsplit*qsplit*rsplit
+       tstep = dtime/real(nsplit*qsplit*rsplit,r8)
+       TimeLevel%nstep = get_nstep()*nsplit*qsplit*rsplit
     endif
 
     ! initial SE (subcycled) nstep
@@ -353,13 +593,13 @@ CONTAINS
   subroutine dyn_run( dyn_state, rc )
 
     ! !USES:
-    use parallel_mod,     only : par
+    use parallel_mod,     only: par
     use prim_driver_mod,  only: prim_run_subcycle
-    use dimensions_mod,   only : nlev, nelemd
+    use dimensions_mod,   only: nlev, nelemd
     use thread_mod,       only: horz_num_threads
     use time_mod,         only: tstep
     use hybrid_mod,       only: init_loop_ranges, get_loop_ranges, config_thread_region
-!    use perf_mod, only : t_startf, t_stopf
+!    use perf_mod, only: t_startf, t_stopf
     implicit none
 
 
@@ -384,7 +624,7 @@ CONTAINS
 !       write(*,200) nets, nete
 !200 format(2x, 2i4, ' nets, nete - dyn_run')
 
-       do n=1,se_nsplit
+       do n=1, nsplit
           ! forward-in-time RK, with subcycling
           call prim_run_subcycle(dyn_state%elem,hybrid,nets,nete,&
                tstep, TimeLevel, hvcoord, n)
@@ -467,6 +707,3 @@ CONTAINS
   end subroutine write_grid_mapping
 
 end module dyn_comp
-
-
-
